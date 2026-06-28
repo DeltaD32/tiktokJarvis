@@ -38,6 +38,12 @@ WHISPER_COMPUTE = _optional("DELA_WHISPER_COMPUTE", "float16")
 PIPER_VOICE = _optional("DELA_PIPER_VOICE", "en_US-amy-medium")
 VAD_AGGRESSIVENESS = int(_optional("DELA_VAD_AGGRESSIVENESS", "3"))
 
+# Tracing (optional). Set PROVIDER to "langsmith" or "langfuse" to enable.
+TRACING_PROVIDER = _optional("DELA_TRACING_PROVIDER", "")  # "" = disabled
+TRACING_PROJECT = _optional("DELA_TRACING_PROJECT", "dela")
+TRACING_API_KEY = _optional("DELA_TRACING_API_KEY", "")
+TRACING_ENDPOINT = _optional("DELA_TRACING_ENDPOINT", "")
+
 
 def describe() -> str:
     return json.dumps(
@@ -47,6 +53,7 @@ def describe() -> str:
             "base_url": BASE_URL,
             "stt": f"faster-whisper/{WHISPER_MODEL} on {WHISPER_DEVICE}",
             "tts": f"piper/{PIPER_VOICE}",
+            "tracing": TRACING_PROVIDER or "disabled",
         },
         indent=2,
     )

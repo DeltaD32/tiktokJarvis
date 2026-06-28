@@ -42,7 +42,36 @@ class _Streamer(Protocol):
 
 
 def _client() -> OpenAI:
-    return OpenAI(base_url=config.BASE_URL, api_key=config.API_KEY)
+    return OpenAI(
+        base_url=config.BASE_URL,
+        api_key=config.API_KEY,
+        default_headers=_tracing_headers(),
+    )
+
+
+def _tracing_headers() -> dict[str, str] | None:
+    """Build LangSmith/Langfuse trace headers for the OpenAI client.
+
+    LangSmith reads these from the request headers to attribute calls to a
+    project. Langfuse uses a proxy or the langfuse SDK, so we only inject
+    LangSmith headers here. The key integration is at the audit/tracing seam;
+    these headers give us server-side trace attribution when LangSmith is on.
+    """
+    from dela import tracing, config
+
+    if not config.TRACING_PROVIDER:
+        return None
+
+    if config.TRACING_PROVIDER.lower() == "langsmith":
+        headers = {}
+        if config.TRACING_API_KEY:
+            headers["langsmith-api-key"] = config.TRACING_API_KEY
+        if config.TRACING_ENDPOINT:
+            headers["langsmith-endpoint"] = config.TRACING_ENDPOINT
+        headers["langsmith-project"] = config.TRACING_PROJECT
+        return headers or None
+
+    return None
 
 
 def _wrap_error(prefix: str, e: Exception) -> ProviderError:

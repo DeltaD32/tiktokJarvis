@@ -62,6 +62,18 @@ class Registry:
     def names(self) -> list[str]:
         return list(self._tools.keys())
 
+    def scoped_schemas(self, whitelist: set[str] | None = None) -> list[dict[str, Any]]:
+        """Return schemas for whitelisted tools only. None = all tools."""
+        if whitelist is None:
+            return self.schemas()
+        return [t.schema() for t in self._tools.values() if t.name in whitelist]
+
+    def scoped_get(self, name: str, whitelist: set[str] | None = None) -> Tool | None:
+        """Get a tool by name, but only if it's in the whitelist (if set)."""
+        if whitelist is not None and name not in whitelist:
+            return None
+        return self._tools.get(name)
+
 
 # The single shared registry.
 registry = Registry()
@@ -91,6 +103,6 @@ def register(
 
 
 # Importing these modules registers their tools as a side effect.
-from dela.tools import project, research, systems, memory, heartbeat_tools, ui_tools  # noqa: F401,E402
+from dela.tools import project, research, systems, memory, heartbeat_tools, ui_tools, subagent  # noqa: F401,E402
 
 __all__ = ["registry", "register", "Tool", "Registry"]

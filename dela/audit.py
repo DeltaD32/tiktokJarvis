@@ -90,6 +90,11 @@ def kill_switch(state: str) -> None:
     _write(f"[{_ts()}] KILL_SWITCH {state}")
 
 
+def _write_event(event: str) -> None:
+    """Write a generic event line (used by tracing for sub-agent events, etc.)."""
+    _write(f"[{_ts()}] {event}")
+
+
 def tail(n: int = 20) -> str:
     """Return the last n lines of the audit log for display."""
     if not _LOG.exists():
