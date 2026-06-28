@@ -65,6 +65,6 @@ def agent_descriptions() -> list[dict[str, str]]:
 
 
 # Importing these modules registers their agents as a side effect.
-from dela.agents import researcher  # noqa: F401,E402
+from dela.agents import researcher, presenter  # noqa: F401,E402
 
 __all__ = ["Soul", "register_agent", "get_agent", "list_agents", "agent_descriptions"]

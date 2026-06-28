@@ -22,7 +22,6 @@ dist/
 dela_state/
 models/
 *.log
-
 # Test artifacts
 dela_stdout.txt
 dela_stderr.txt
