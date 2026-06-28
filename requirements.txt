@@ -11,3 +11,4 @@ nvidia-cudnn-cu12>=9.0
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 websockets>=12.0
+mcp>=1.0.0
