@@ -103,6 +103,6 @@ def register(
 
 
 # Importing these modules registers their tools as a side effect.
-from dela.tools import project, research, systems, memory, heartbeat_tools, ui_tools, subagent  # noqa: F401,E402
+from dela.tools import project, research, systems, memory, heartbeat_tools, ui_tools, subagent, skills  # noqa: F401,E402
 
 __all__ = ["registry", "register", "Tool", "Registry"]
