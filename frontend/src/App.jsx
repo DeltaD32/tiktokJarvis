@@ -10,6 +10,7 @@ import { ConfirmationDialog }   from './components/ConfirmationDialog'
 import { TasksPanel }           from './components/panels/TasksPanel'
 import { NoticesPanel }         from './components/panels/NoticesPanel'
 import { AuditPanel }           from './components/panels/AuditPanel'
+import { MemoryPanel }          from './components/panels/MemoryPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
 
 export default function App() {
@@ -103,6 +104,7 @@ export default function App() {
         onResume={resumeHeartbeat}
         onOpenNotices={() => openPanel('notices')}
         onOpenAudit={() => openPanel('audit')}
+        onOpenMemory={() => openPanel('memory')}
       />
 
       {/* Conversation overlay */}
@@ -147,6 +149,9 @@ export default function App() {
         )}
         {panel === 'audit' && (
           <AuditPanel key="audit" onClose={handleClose} message={panelMessage} />
+        )}
+        {panel === 'memory' && (
+          <MemoryPanel key="memory" onClose={handleClose} message={panelMessage} />
         )}
       </AnimatePresence>
 

@@ -25,6 +25,15 @@ INFO = "info"
 ATTENTION = "attention"
 URGENT = "urgent"
 
+# Hook set by the server (if running) to push new notices to connected clients.
+# None when running headless (CLI text/voice). Keeps the heartbeat decoupled.
+_on_file_hook = None
+
+
+def set_on_file_hook(hook) -> None:
+    global _on_file_hook
+    _on_file_hook = hook
+
 
 def _load() -> list[dict]:
     if not _STORE.exists():
@@ -67,6 +76,8 @@ def file(source: str, message: str, severity: str = INFO) -> dict | None:
     }
     notices.append(notice)
     _save(notices)
+    if _on_file_hook is not None:
+        _on_file_hook(notice)
     return notice
 
 

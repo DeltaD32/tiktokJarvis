@@ -12,6 +12,7 @@ import asyncio
 import json
 import threading
 import uuid
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
@@ -23,17 +24,28 @@ from dela.brain import respond
 from dela.gate import Confirmer, set_confirmer
 from dela.tools import registry
 
-app = FastAPI(title="Dela")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
-
 # ── Global state (single-user local app) ─────────────────────────────────────
+_main_loop: asyncio.AbstractEventLoop | None = None
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    global _main_loop
+    _main_loop = asyncio.get_event_loop()
+    set_confirmer(WebSocketConfirmer())
+    heartbeat.start()
+    yield
+    heartbeat.stop()
+
+
+app = FastAPI(title="Dela", lifespan=lifespan)
+app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
 _clients: set[WebSocket] = set()
 _history: list[dict] = []
 _confirm_callbacks: dict[str, threading.Event] = {}
 _confirm_results: dict[str, bool] = {}
 _brain_lock = threading.Lock()
-_main_loop: asyncio.AbstractEventLoop | None = None
 
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
 
@@ -57,6 +69,13 @@ def broadcast_sync(payload: dict) -> None:
 from dela.tools import ui_tools as _ui_tools  # noqa: E402
 _ui_tools._broadcast_fn = broadcast_sync
 
+# Register notice hook so new heartbeat notices push to connected clients
+def _on_notice(notice: dict) -> None:
+    broadcast_sync({"type": "notice", "notice": notice})
+    broadcast_sync({"type": "notices_refresh", "notices": noticeboard.active()})
+
+noticeboard.set_on_file_hook(_on_notice)
+
 # ── Confirmation bridge ───────────────────────────────────────────────────────
 
 class WebSocketConfirmer:
@@ -76,19 +95,7 @@ class WebSocketConfirmer:
         return granted and result
 
 
-# ── Lifecycle ─────────────────────────────────────────────────────────────────
-
-@app.on_event("startup")
-async def startup() -> None:
-    global _main_loop
-    _main_loop = asyncio.get_event_loop()
-    set_confirmer(WebSocketConfirmer())
-    heartbeat.start()
-
-
-@app.on_event("shutdown")
-async def shutdown() -> None:
-    heartbeat.stop()
+# Lifecycle handled by the `lifespan` context manager above (FastAPI ≥ 0.109).
 
 
 # ── REST endpoints ────────────────────────────────────────────────────────────
@@ -158,6 +165,29 @@ def api_status():
         "cost": audit.cost_summary(),
         "notice_count": len(noticeboard.active()),
     }
+
+
+@app.put("/api/memory/{fact_id}")
+def api_update_memory(fact_id: int, body: dict):
+    result = memory.update(fact_id, body["text"])
+    if result is None:
+        return {"ok": False, "error": f"No fact with id {fact_id}."}
+    return {"ok": True, "fact": result}
+
+
+@app.get("/api/config/heartbeat")
+def api_get_hb_config():
+    from dela import hb_config
+    return hb_config.load()
+
+
+@app.put("/api/config/heartbeat")
+def api_update_hb_config(body: dict):
+    from dela import hb_config
+    import json as _json
+    path = hb_config.path()
+    path.write_text(_json.dumps(body, indent=2), encoding="utf-8")
+    return {"ok": True, "config": body}
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────

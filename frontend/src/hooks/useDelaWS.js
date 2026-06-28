@@ -53,8 +53,8 @@ export function useDelaWS() {
           if (data.tool_blip) {
             setToolStatus(data.content)
           } else {
-            streamBuffer.current = data.content
-            setCurrentStream(data.content)
+            streamBuffer.current += data.content
+            setCurrentStream(streamBuffer.current)
           }
           break
 
@@ -131,6 +131,8 @@ export function useDelaWS() {
   const sendMessage = useCallback((content) => {
     setConversation(prev => [...prev, { role: 'user', content, id: Date.now() }])
     setOrbState('thinking')
+    setCurrentStream(null)
+    streamBuffer.current = ''
     send({ type: 'message', content })
   }, [send])
 
