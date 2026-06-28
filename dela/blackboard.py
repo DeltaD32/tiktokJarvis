@@ -298,12 +298,21 @@ def list_all() -> list[dict[str, Any]]:
 
 
 def _log_event(bb: dict[str, Any], event: str, actor: str) -> None:
-    """Append to the blackboard's history log."""
+    """Append to the blackboard's history log and the global status events log."""
     bb.setdefault("history", []).append({
         "event": event,
         "actor": actor,
         "timestamp": _now(),
     })
+    # Also log to the global status events log
+    from dela.status_events import log as _log_status
+    _log_status(
+        event_type=event.split(":")[0].split()[0] if ":" in event or " " in event else event,
+        entity_id=bb.get("id", ""),
+        entity_type="blackboard",
+        actor=actor,
+        detail=event,
+    )
 
 
 def summary(blackboard_id: str) -> str:

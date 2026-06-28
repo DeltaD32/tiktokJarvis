@@ -823,3 +823,277 @@ The server should:
 ## License
 
 This project is currently private. See the GitHub repo for licensing decisions.
+
+---
+
+## Advanced Orchestration — Multi-Agent System
+
+Dela has a full multi-agent orchestration system adapted from the blackboard
+architecture pattern (1970s AI research). It enables complex, multi-step tasks
+that require input from multiple specialist agents working on a shared workspace.
+
+### Blackboard Architecture
+
+| Component | File | Role |
+|---|---|---|
+| **Blackboard** | `dela/blackboard.py` | Shared workspace — agents contribute sections, status state machine (`deliberating → awaiting_approval → executing → done \| blocked \| archived`) |
+| **Project store** | `dela/projects.py` | Persistent state — specialist queues, decisions, conflicts, dependencies, learnings |
+| **Handoff protocol** | `dela/handoff.py` | Structured task envelopes (HANDOFF/RESPONSE) with `handoff_id` traceability |
+| **Secretary agent** | `dela/agents/secretary.py` | Coordinator — manages state, never does domain work, 6 modes |
+| **Blackboard memory** | `dela/blackboard_memory.py` | Auto-distillation + cleanup of completed blackboards |
+| **DAG scheduler** | `dela/scheduler.py` | Parallel task execution with dependency resolution + file leases |
+| **Status events** | `dela/status_events.py` | Append-only lifecycle event log (JSONL) for timeline views |
+
+### Multi-Agent Workflow
+
+```
+1. create_project → create_blackboard
+2. dispatch_to_blackboard (specialist writes a section)
+3. Repeat step 2 for each specialist (sequential queue)
+4. set_execution_plan (orchestrator assembles all sections)
+5. approve_blackboard (governance gate — user confirms)
+6. Worker executes (status: executing)
+7. distill_blackboard → learnings stored → blackboard archived
+```
+
+### Conflict Resolution Tiebreakers
+
+When specialists disagree, formal tiebreakers are applied:
+1. **Prior decisions** — if a recorded decision exists, follow it
+2. **Simpler solution wins** — prefer fewer moving parts
+3. **Domain authority** — defer to the closest-domain specialist
+4. **User escalation** — if none of the above resolves it, ask the user
+
+### Governance Gate
+
+High-stakes multi-agent plans require explicit user approval before execution.
+The `approve_blackboard` tool transitions the blackboard to `executing` status.
+The worker's `is_gate_open()` check is absolute — it cannot be overridden.
+
+### Blackboard Memory System (Auto-Cleanup)
+
+Completed blackboards are automatically distilled and cleaned up:
+1. **Distill** — Extract key learnings (what worked, decisions, patterns) → stored in project memory + agent self-learning memory
+2. **Archive** — Blackboard moves to `archived` status (file stays for audit)
+3. **Delete** — After 30 days, archived blackboards are deleted (knowledge lives on in memory)
+4. **Heartbeat check** — `blackboard_cleanup` check runs periodically to distill + clean
+
+This keeps `dela_state/blackboards/` clean — only active and recently-completed boards are present.
+
+### DAG Scheduler
+
+For tasks that can run in parallel, the DAG scheduler decomposes work into a
+dependency graph and runs independent tasks concurrently:
+
+- **Dependency resolution** — tasks only run when all `depends_on` tasks complete
+- **File leases** — two tasks with overlapping file scopes serialize automatically
+- **Concurrency cap** — max N tasks running simultaneously (default 3)
+- **Acyclic validation** — Kahn's algorithm detects cycles before execution
+- **Retry** — failed tasks can retry up to `max_attempts` (default 3)
+
+### Agent Self-Learning Memory
+
+Each sub-agent has its own memory namespace (`<agent>::learnings`) with three
+learning types:
+
+| Type | Description |
+|---|---|
+| `WORKED` | Approaches that succeeded — reuse on similar tasks |
+| `AVOID` | Approaches that failed — don't repeat |
+| `PATTERN` | Reusable patterns discovered across tasks |
+
+- **Recall** — Learnings are injected into the sub-agent's prompt at task start
+- **Decay** — Scores decay over time; stale learnings are pruned (keeps store bounded)
+- **Scribe** — After every sub-agent run, the scribe auto-extracts learnings from the result
+- **Distillation** — On project completion, cross-cutting learnings go to `shared::learnings`
+
+### Semantic Routing Cache
+
+Dela learns from past routing decisions. When a request is similar to a past one
+(Jaccard token similarity ≥ 0.65), the cached routing is used — skipping
+deliberation. The cache grows as Dela handles more requests, making routing
+faster over time.
+
+- **Record** — Every `dispatch_subagent` call records the routing decision
+- **Lookup** — Before deliberating, check the cache for a similar past request
+- **Prune** — Cache capped at 200 entries (highest confidence + most recent kept)
+
+### Status Events Log
+
+Every lifecycle transition is recorded as a structured event in
+`dela_state/status_events.jsonl` (JSON Lines, append-only):
+
+Event types: `project_created`, `blackboard_created`, `blackboard_status_changed`,
+`specialist_dispatched`, `specialist_returned`, `execution_plan_set`,
+`execution_started`, `execution_completed`, `decision_recorded`,
+`conflict_resolved`, `dag_task_started`, `dag_task_done`, `dag_task_failed`,
+`learning_recorded`, `learning_distilled`, `routing_cached`, `routing_hit`.
+
+Use the `get_timeline` tool to view the timeline for any project or blackboard.
+
+---
+
+## Sub-Agents
+
+| Agent | File | Tools | Role |
+|---|---|---|---|
+| `researcher` | `dela/agents/researcher.py` | fetch_url, check_host | Web research and summarization |
+| `presenter` | `dela/agents/presenter.py` | clone_pptx_style, list_ppt_styles, generate_presentation, list_notices | Presentation design and generation |
+| `secretary` | `dela/agents/secretary.py` | All project_mgmt tools | Multi-agent project coordinator (never does domain work) |
+
+Adding a sub-agent = one file in `dela/agents/` with `@register_agent(...)`. The
+brain injects recalled agent memory into the sub-agent's prompt automatically.
+
+---
+
+## Skills
+
+| Skill | File | Guidance |
+|---|---|---|
+| `research` | `dela/skills/research.md` | Multi-step web research workflow (sources, cross-reference, synthesize, cite) |
+| `task-management` | `dela/skills/task-management.md` | Task management best practices (clarify, prioritize, review) |
+| `presentation` | `dela/skills/presentation.md` | Presentation design (storyline, layout selection, visual principles) |
+
+Adding a skill = drop a `.md` file in `dela/skills/`. The model loads it on
+demand via the `load_skill` tool.
+
+---
+
+## Presentation System — PPT Style Cloner + Designer
+
+Dela can clone the visual style of any PowerPoint file and generate new
+presentations using that style.
+
+### Style Cloner
+
+Parse any `.pptx` and extract its complete visual DNA at the XML level:
+- Theme color scheme (all 12 named slots)
+- Font scheme (major + minor fonts)
+- Master text styles (9 levels of bullets, title/body/footer)
+- Layout backgrounds + dark/light flags
+- Layout placeholders (position, size, type)
+- Master named shapes (footer, page numbers, dividers)
+- Slide shape fills (every shape on every slide)
+- Typography heuristic (dominant font, title/body sizes, primary color)
+- Title background image extraction
+
+Extracted styles are stored in `dela_state/styles/<slug>/`:
+```
+<slug>/
+├── style.json       Full machine-readable profile
+├── brand-guide.md   Human-readable brand guide
+├── source.pptx      Copy of original (template base for generation)
+└── title-bg.jpeg    Extracted title background (if present)
+```
+
+### Slide Generator
+
+Builds `.pptx` files from a storyline using a stored style. The `pptx_lib`
+building blocks are style-driven — colors/fonts loaded from `style.json` at
+runtime, not hardcoded.
+
+Layout types: `bullets`, `title_only`, `hero_number`, `pillars`, `mece_tiles`,
+`table`, `chevron`, `cards`, `key_message`.
+
+### Presentation Tools
+
+| Tool | Confirmation | Description |
+|---|---|---|
+| `clone_pptx_style` | Yes | Parse a .pptx, extract its style, store it |
+| `list_ppt_styles` | No | List all stored styles |
+| `generate_presentation` | Yes | Generate a .pptx from a storyline |
+
+---
+
+## Complete Tool Reference
+
+Dela has **34 tools** across all modules:
+
+### Core Tools
+| Tool | Module | Confirmation |
+|---|---|---|
+| `list_tasks` | project | No |
+| `add_task` | project | Yes |
+| `complete_task` | project | Yes |
+| `fetch_url` | research | No |
+| `check_host` | systems | No |
+| `remember_fact` | memory | Yes |
+| `update_fact` | memory | Yes |
+| `forget_fact` | memory | Yes |
+| `list_notices` | heartbeat_tools | No |
+| `dismiss_notice` | heartbeat_tools | Yes |
+| `show_panel` | ui_tools | No |
+| `dispatch_subagent` | subagent | No |
+| `load_skill` | skills | No |
+| `list_skills` | skills | No |
+| `run_code` | code_exec | Yes |
+
+### Presentation Tools
+| Tool | Module | Confirmation |
+|---|---|---|
+| `clone_pptx_style` | presentation | Yes |
+| `list_ppt_styles` | presentation | No |
+| `generate_presentation` | presentation | Yes |
+
+### Project Management (Blackboard) Tools
+| Tool | Module | Confirmation |
+|---|---|---|
+| `create_project` | project_mgmt | Yes |
+| `create_blackboard` | project_mgmt | Yes |
+| `dispatch_to_blackboard` | project_mgmt | No |
+| `set_execution_plan` | project_mgmt | Yes |
+| `advance_queue` | project_mgmt | No |
+| `resolve_conflict` | project_mgmt | Yes |
+| `get_blackboard_status` | project_mgmt | No |
+| `get_project_status` | project_mgmt | No |
+| `approve_blackboard` | project_mgmt | Yes |
+
+### Agent Memory Tools
+| Tool | Module | Confirmation |
+|---|---|---|
+| `recall_agent_memory` | agent_memory_tools | No |
+| `record_agent_learning` | agent_memory_tools | Yes |
+| `get_agent_memory_status` | agent_memory_tools | No |
+
+### Routing Cache Tools
+| Tool | Module | Confirmation |
+|---|---|---|
+| `check_routing_cache` | routing_cache_tools | No |
+| `routing_cache_status` | routing_cache_tools | No |
+
+### DAG Scheduler Tools
+| Tool | Module | Confirmation |
+|---|---|---|
+| `run_dag` | dag_tools | Yes |
+
+### Status Events Tools
+| Tool | Module | Confirmation |
+|---|---|---|
+| `get_timeline` | status_events_tools | No |
+
+### MCP Tools
+MCP server tools are dynamically loaded from configured MCP servers. They
+appear in the registry as `<server>__<tool_name>` and respect the same
+confirmation gate as native tools. See `mcp_config.json` for configuration.
+
+---
+
+## State Files Reference
+
+All durable state lives under `dela_state/` (git-ignored):
+
+| File/Dir | Purpose |
+|---|---|
+| `dela_state/memory.json` | Long-term user memory (durable facts) |
+| `dela_state/notices.json` | Noticeboard (proactive notices) |
+| `dela_state/schedule.json` | Heartbeat schedule (next-due times) |
+| `dela_state/audit.log` | Audit trail (append-only) |
+| `dela_state/cost_tally.json` | Running model cost tally |
+| `dela_state/tasks.json` | Project management tasks |
+| `dela_state/agent_memory.json` | Per-agent self-learning memory |
+| `dela_state/routing_cache.json` | Semantic routing cache |
+| `dela_state/status_events.jsonl` | Lifecycle event log (JSONL, append-only) |
+| `dela_state/blackboards/` | Blackboard files (one JSON per blackboard) |
+| `dela_state/projects/` | Project store (one JSON per project) |
+| `dela_state/styles/` | Cloned PPT styles (one folder per style) |
+| `dela_state/output/` | Generated presentations |

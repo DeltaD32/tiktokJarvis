@@ -94,15 +94,21 @@ def run_subagent(
     """Run a sub-agent to completion and return its final text reply.
 
     The sub-agent has its own history (isolated context), its own system prompt
-    (the SOUL), and a scoped set of tools (the whitelist). It runs the same
-    _run_turn loop but with a custom prompt and tools. The result string goes
-    back to the lead agent as a tool result.
+    (the SOUL + recalled agent memory), and a scoped set of tools (the whitelist).
+    It runs the same _run_turn loop but with a custom prompt and tools. The
+    result string goes back to the lead agent as a tool result.
 
     Returns the sub-agent's final text reply, or an error message.
     """
-    from dela import tracing
+    from dela import tracing, agent_memory
 
     tracing.trace_subagent_dispatch(agent_name, task)
+
+    # Inject recalled agent memory into the system prompt
+    memory_prompt = agent_memory.recall_as_prompt(agent_name)
+    full_prompt = system_prompt_text
+    if memory_prompt:
+        full_prompt = system_prompt_text + "\n\n" + memory_prompt
 
     sub_history: list[Message] = [{"role": "user", "content": task}]
     scoped_schemas = registry.scoped_schemas(tool_whitelist)
@@ -110,7 +116,7 @@ def run_subagent(
     for _ in range(_MAX_TOOL_ROUNDS):
         try:
             completion = provider.reply_with_tools(
-                system_prompt_text, sub_history, scoped_schemas
+                full_prompt, sub_history, scoped_schemas
             )
             audit.model_call(provider.config.MODEL)
         except ProviderError as e:
@@ -131,10 +137,15 @@ def run_subagent(
 
         text = msg.content or ""
         tracing.trace_subagent_return(agent_name, text[:80])
+        # Scribe: auto-record learnings from the completed task
+        from dela.scribe import scribe as _scribe
+        _scribe(agent_name, task, text)
         return text
 
     result = f"Sub-agent {agent_name} exceeded its tool-call limit."
     tracing.trace_subagent_return(agent_name, result[:80])
+    from dela.scribe import scribe as _scribe
+    _scribe(agent_name, task, result)
     return result
 
 

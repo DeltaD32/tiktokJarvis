@@ -59,6 +59,10 @@ def dispatch_subagent(args: dict) -> str:
     if soul is None:
         return f"No sub-agent named '{agent_name}'. Available: {', '.join(a.name for a in list_agents())}"
 
+    # Record this routing decision in the cache for future lookups
+    from dela.routing_cache import record as _record_route
+    _record_route(task, agent_name, target_type="agent")
+
     prompt = soul.build_prompt()
     result = run_subagent(
         agent_name=agent_name,
