@@ -103,7 +103,7 @@ def register(
 
 
 # Importing these modules registers their tools as a side effect.
-from dela.tools import project, research, systems, memory, heartbeat_tools, ui_tools, subagent, skills, code_exec, presentation  # noqa: F401,E402
+from dela.tools import project, research, systems, memory, heartbeat_tools, ui_tools, subagent, skills, code_exec, presentation, project_mgmt  # noqa: F401,E402
 
 # Load MCP server tools (if configured). Safe no-op if no servers enabled.
 try:

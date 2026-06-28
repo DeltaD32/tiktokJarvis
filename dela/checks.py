@@ -82,8 +82,32 @@ def _check_tasks_due(params: dict[str, Any]) -> dict | None:
     return {"source": "tasks_due", "message": msg, "severity": sev}
 
 
+def _check_blackboard_cleanup(params: dict[str, Any]) -> dict | None:
+    """Distill and clean up completed blackboards. Files a notice if anything was cleaned."""
+    from dela.blackboard_memory import cleanup_completed_blackboards, cleanup_old_blackboards
+
+    completed = cleanup_completed_blackboards()
+    old = cleanup_old_blackboards()
+
+    distilled = completed.get("distilled", 0)
+    deleted = old.get("deleted", 0)
+
+    if distilled == 0 and deleted == 0:
+        return None  # nothing to report — quiet by default
+
+    msg_parts = []
+    if distilled:
+        msg_parts.append(f"distilled {distilled} completed blackboard(s) into project memory")
+    if deleted:
+        msg_parts.append(f"cleaned up {deleted} old archived blackboard(s)")
+    msg = "Blackboard cleanup: " + " and ".join(msg_parts) + "."
+
+    return {"source": "blackboard_cleanup", "message": msg, "severity": noticeboard.INFO}
+
+
 # Registry of check name -> function.
 CHECKS: dict[str, Any] = {
     "systems_health": _check_systems_health,
     "tasks_due": _check_tasks_due,
+    "blackboard_cleanup": _check_blackboard_cleanup,
 }
