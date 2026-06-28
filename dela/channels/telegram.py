@@ -15,6 +15,7 @@ import threading
 
 from dela import brain, config, gate, heartbeat, noticeboard
 from dela.channels import register_channel
+from dela.channels.config import get_channel, resolve_secret, is_enabled
 
 # Per-chat conversation histories (single-user assumption; multi-user later).
 _histories: dict[int, list] = {}
@@ -29,13 +30,13 @@ class TelegramConfirmer:
 
 
 def _start_telegram() -> None:
-    import os
     import urllib.request
     import json
 
-    token = os.getenv("DELA_TELEGRAM_BOT_TOKEN", "")
+    cfg = get_channel("telegram")
+    token = resolve_secret(cfg, "bot_token")
     if not token:
-        print("[Telegram: no DELA_TELEGRAM_BOT_TOKEN set — channel disabled]")
+        print("[Telegram: no bot token configured — channel disabled]")
         return
 
     # Set the Telegram confirmer for this session.
@@ -110,6 +111,9 @@ def _send(api: str, chat_id: int, text: str) -> None:
 
 @register_channel("telegram")
 def start() -> None:
+    if not is_enabled("telegram"):
+        print("[Telegram: disabled in config]")
+        return
     _start_telegram()
 
 

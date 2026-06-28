@@ -23,6 +23,7 @@ from dela import audit, heartbeat, memory, noticeboard
 from dela.brain import respond
 from dela.gate import Confirmer, set_confirmer
 from dela.tools import registry
+from dela.channels.config import is_enabled
 
 # ── Global state (single-user local app) ─────────────────────────────────────
 _main_loop: asyncio.AbstractEventLoop | None = None
@@ -268,3 +269,9 @@ async def _handle_message(user_text: str) -> None:
 _dist = Path(__file__).parent.parent / "frontend" / "dist"
 if _dist.exists():
     app.mount("/", StaticFiles(directory=str(_dist), html=True), name="static")
+
+# ── Channel endpoints ─────────────────────────────────────────────────────────
+
+if is_enabled("teams_webhook"):
+    from dela.channels.teams_webhook import register_endpoint as _reg_teams
+    _reg_teams(app)

@@ -36,6 +36,6 @@ def list_channels() -> list[str]:
 
 
 # Importing these modules registers their channels as a side effect.
-from dela.channels import telegram  # noqa: F401,E402
+from dela.channels import telegram, teams_webhook, graph_api  # noqa: F401,E402
 
 __all__ = ["register_channel", "get_channel", "list_channels"]

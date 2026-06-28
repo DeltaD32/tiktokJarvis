@@ -1,0 +1,23 @@
+{
+  "channels": {
+    "telegram": {
+      "enabled": false,
+      "bot_token_env": "DELA_TELEGRAM_BOT_TOKEN"
+    },
+    "teams_webhook": {
+      "enabled": false,
+      "incoming_webhook_url_env": "DELA_TEAMS_WEBHOOK_URL",
+      "endpoint_path": "/channels/teams/webhook",
+      "verify_token_env": "DELA_TEAMS_VERIFY_TOKEN"
+    },
+    "graph_api": {
+      "enabled": false,
+      "client_id_env": "DELA_GRAPH_CLIENT_ID",
+      "client_secret_env": "DELA_GRAPH_CLIENT_SECRET",
+      "tenant_id_env": "DELA_GRAPH_TENANT_ID",
+      "target_type": "chat",
+      "target_id_env": "DELA_GRAPH_TARGET_ID",
+      "poll_interval_seconds": 10
+    }
+  }
+}
