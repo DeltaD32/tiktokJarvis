@@ -1,0 +1,25 @@
+{
+  "heartbeat_interval_seconds": 30,
+  "quiet_hours": {
+    "enabled": true,
+    "start": "22:00",
+    "end": "08:00"
+  },
+  "checks": {
+    "systems_health": {
+      "enabled": true,
+      "interval_seconds": 120,
+      "targets": [
+        "https://www.google.com",
+        "8.8.8.8:53"
+      ],
+      "surface_on": "down"
+    },
+    "tasks_due": {
+      "enabled": true,
+      "interval_seconds": 300,
+      "look_ahead_hours": 24,
+      "surface_on": "due_soon"
+    }
+  }
+}

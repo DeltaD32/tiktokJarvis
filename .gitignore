@@ -1,0 +1,33 @@
+# Secrets - never commit
+.env
+.env.local
+secrets.*
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+
+# State / logs / models
+dela_state/
+models/
+*.log
+
+# Test artifacts
+dela_stdout.txt
+dela_stderr.txt
+empty_input.txt
+
+# pip cache/tmp
+.pip_cache/
+.pip_tmp/
