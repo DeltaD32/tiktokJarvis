@@ -31,3 +31,7 @@ empty_input.txt
 # pip cache/tmp
 .pip_cache/
 .pip_tmp/
+
+# Frontend
+node_modules/
+frontend/dist/
