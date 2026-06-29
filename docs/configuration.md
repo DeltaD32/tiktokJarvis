@@ -64,23 +64,63 @@ Each profile can have its own API connection. When a profile-specific var is set
 
 ## Profile System
 
-Two security postures for different contexts. Stored in `.env` as `DELA_PROFILE`. Switchable via the Settings panel (requires restart).
+Three profiles for different contexts. Stored in `.env` as `DELA_PROFILE`. Switchable via the Settings panel (requires restart).
 
-| Feature | Personal | Work |
-|---|---|---|
-| **Description** | Full access, standard security | Enterprise-grade, restricted |
-| **CORS** | Wildcard (local dev) | Approved origins only |
-| **Tools blocked** | None | `fetch_url` (no uncontrolled web fetch) |
-| **Extra confirmation** | None | `run_security_scan`, `dispatch_subagent`, `dispatch_system_expert`, `create_project`, `create_blackboard` |
-| **Injection defense** | Standard (condensed rules) | Maximum (8 absolute rules) |
-| **Audit level** | Normal | Verbose |
-| **WIZ integration** | Off | On (hook ready) |
-| **Web fetch** | Allowed | Blocked |
-| **Max conversation** | 100K chars | 50K chars |
-| **API connection** | `DELA_PERSONAL_*` vars | `DELA_WORK_*` vars |
+| Feature | Personal | Work | Offline |
+|---|---|---|---|
+| **Description** | Full access, standard security | Enterprise-grade, restricted | Fully local, no internet |
+| **CORS** | Wildcard (local dev) | Approved origins only | Wildcard (local dev) |
+| **Tools blocked** | None | `fetch_url` | `fetch_url`, `check_host` |
+| **Extra confirmation** | None | `run_security_scan`, `dispatch_subagent`, `dispatch_system_expert`, `create_project`, `create_blackboard` | None |
+| **Injection defense** | Standard | Maximum (8 absolute rules) | Standard |
+| **Audit level** | Normal | Verbose | Normal |
+| **WIZ integration** | Off | On (hook ready) | Off |
+| **Web fetch** | Allowed | Blocked | Blocked |
+| **API connection** | `DELA_PERSONAL_*` vars | `DELA_WORK_*` vars | `DELA_OFFLINE_*` vars |
 
 - **File:** `dela/profiles.py`
 - **Switch:** Settings panel → Profile tab, or edit `.env` and restart
+- **Ollama status:** Settings panel → Profile tab shows live Ollama server status + available models
+
+### Offline Mode with Ollama
+
+Dela runs fully offline with [Ollama](https://ollama.com) as the LLM provider:
+
+1. Install Ollama: `https://ollama.com`
+2. Pull a model: `ollama pull llama3.1` (or `qwen2.5`, `phi3`, `mistral`, etc.)
+3. Start the server: `ollama serve`
+4. Set in `.env`:
+
+```env
+DELA_PROFILE=offline
+DELA_OFFLINE_BASE_URL=http://localhost:11434/v1
+DELA_OFFLINE_API_KEY=ollama
+DELA_OFFLINE_MODEL=llama3.1
+```
+
+Everything runs locally:
+- **LLM**: Ollama (OpenAI-compatible endpoint at `localhost:11434/v1`)
+- **STT**: faster-whisper on your GPU
+- **TTS**: Piper on CPU
+- **VAD**: webrtcvad
+
+The `start_dela.py` preflight checks detect Ollama automatically and list available models. The Settings panel shows Ollama status and model list.
+
+### Profile-Specific API
+
+Each profile can have its own API connection. When a profile-specific var is set, it overrides the generic `DELA_*` var for that profile.
+
+| Variable | Description |
+|---|---|
+| `DELA_PERSONAL_BASE_URL` | Personal profile API endpoint |
+| `DELA_PERSONAL_API_KEY` | Personal profile API key |
+| `DELA_PERSONAL_MODEL` | Personal profile model (e.g. `glm-5.2`) |
+| `DELA_WORK_BASE_URL` | Work profile API endpoint |
+| `DELA_WORK_API_KEY` | Work profile API key |
+| `DELA_WORK_MODEL` | Work profile model (e.g. `claude-sonnet-4-6`) |
+| `DELA_OFFLINE_BASE_URL` | Offline profile API endpoint (default: `http://localhost:11434/v1`) |
+| `DELA_OFFLINE_API_KEY` | Offline profile API key (default: `ollama`) |
+| `DELA_OFFLINE_MODEL` | Offline profile model (default: `llama3.1`) |
 
 ---
 

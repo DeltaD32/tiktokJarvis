@@ -41,11 +41,36 @@ class _Streamer(Protocol):
     def stream(self) -> Iterator[str]: ...
 
 
+def _active_connection() -> dict[str, Any]:
+    """Resolve the active API connection (base_url, api_key, model, headers).
+
+    Pulls from the connection registry (dela_state/connections.json), falling
+    back to the config.py env defaults when no profile assignment exists. For
+    OAuth connections the bearer token is fetched/refreshed here so every call
+    always has a valid token.
+    """
+    from dela import connections
+    try:
+        return connections.get_active()
+    except Exception:
+        return {
+            "base_url": config.BASE_URL,
+            "api_key": config.API_KEY,
+            "model": config.MODEL,
+            "extra_headers": {},
+        }
+
+
 def _client() -> OpenAI:
+    conn = _active_connection()
+    headers = _tracing_headers() or {}
+    extra = conn.get("extra_headers") or {}
+    if extra:
+        headers.update(extra)
     return OpenAI(
-        base_url=config.BASE_URL,
-        api_key=config.API_KEY,
-        default_headers=_tracing_headers(),
+        base_url=conn.get("base_url", config.BASE_URL),
+        api_key=conn.get("api_key", config.API_KEY) or "missing",
+        default_headers=headers or None,
     )
 
 
@@ -91,6 +116,31 @@ def _wrap_error(prefix: str, e: Exception) -> ProviderError:
     return ProviderError(f"{prefix}: {e}")
 
 
+def _effective_model(override: str | None = None) -> str:
+    """Resolve the model name to use for a call.
+
+    Priority: explicit override > live_config override > active connection model
+    > config.MODEL default.
+    """
+    if override:
+        return override
+    try:
+        from dela import live_config
+        live_model = live_config.get_override("model")
+        if live_model and live_model != "default" and str(live_model).strip():
+            return live_model
+    except Exception:
+        pass
+    try:
+        conn = _active_connection()
+        conn_model = conn.get("model")
+        if conn_model and str(conn_model).strip():
+            return conn_model
+    except Exception:
+        pass
+    return config.MODEL
+
+
 def reply(system_prompt: str, history: list[Message], model: str | None = None) -> Iterator[str]:
     """Stream text tokens for a plain (tool-less) turn.
 
@@ -98,7 +148,7 @@ def reply(system_prompt: str, history: list[Message], model: str | None = None) 
     """
     messages: list[Message] = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
-    use_model = model or config.MODEL
+    use_model = _effective_model(model)
 
     try:
         stream = _client().chat.completions.create(
@@ -134,7 +184,7 @@ def reply_with_tools(
     """
     messages: list[Message] = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
-    use_model = model or config.MODEL
+    use_model = _effective_model(model)
 
     try:
         return _client().chat.completions.create(

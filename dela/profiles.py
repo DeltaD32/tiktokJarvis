@@ -1,11 +1,15 @@
 """Profile system — security postures for different contexts.
 
-Two profiles:
+Three profiles:
   - PERSONAL: less restrictive but still secure. Localhost-only, full tool
     access, standard confirmation gate. For solo use on your own machine.
   - WORK: enterprise-grade. Restricted tools, extended confirmation gate,
     WIZ integration hook, verbose audit, strict injection defense, approved
     origins only. For use in corporate environments.
+  - OFFLINE: fully local, no internet dependency. Paired with Ollama for
+    the LLM and the local voice stack. Blocks web-dependent tools (fetch_url,
+    check_host) since there's no internet. Standard security. For air-gapped
+    or privacy-first use.
 
 Switching profiles changes the security posture. The profile is stored in
 .env as DELA_PROFILE and loaded at startup. It can be switched via the
@@ -108,6 +112,22 @@ PROFILES: dict[str, Profile] = {
         allow_web_fetch=False,
         allow_code_exec=True,  # still allow but with extra logging
         max_conversation_chars=50_000,  # shorter context in work mode
+    ),
+    "offline": Profile(
+        name="offline",
+        description="Fully local, no internet. Paired with Ollama for LLM + local voice stack. Blocks web-dependent tools. For air-gapped or privacy-first use.",
+        cors_origins=["*"],  # local dev — vite proxy handles it
+        bind_host="127.0.0.1",
+        tools_blocked={
+            "fetch_url",   # no internet — web fetch won't work
+            "check_host",  # pinging external hosts is pointless offline
+        },
+        tools_extra_confirm=set(),
+        injection_level="standard",
+        audit_level="normal",
+        wiz_enabled=False,
+        allow_web_fetch=False,
+        allow_code_exec=True,
     ),
 }
 

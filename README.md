@@ -18,6 +18,8 @@ Dela is a voice-first AI assistant that runs entirely on your laptop. It talks, 
 
 No per-call API charges for speech. No cloud dependency for audio. No heavy frameworks. Just Python, seams, and a discipline: **extend at the edges, never rewrite the core.**
 
+**Works fully offline with Ollama** — LLM, STT, TTS, and VAD all run locally. No internet required.
+
 | Capability | Status |
 |---|---|
 | Text, voice, and web UI turns through one shared brain | ✅ |
@@ -33,7 +35,7 @@ No per-call API charges for speech. No cloud dependency for audio. No heavy fram
 | Security self-audit — OWASP LLM Top 10 + CWE Top 25 (20 checks) | ✅ |
 | Prioritized findings (P0–P4) + agent-powered fix button | ✅ |
 | Model router — auto-saves tokens by routing simple tasks to cheap models | ✅ |
-| Profile system — personal (full access) vs work (enterprise-grade) | ✅ |
+| Profile system — personal, work, or fully offline (Ollama) | ✅ |
 | 11 hot-reloadable live settings — no restart to change them | ✅ |
 | Holographic web UI with 5 themes, floating windows, live agent roster | ✅ |
 | One-command startup with preflight checks | ✅ |
@@ -76,6 +78,9 @@ That's it. Preflight checks run, backend launches on `:8000`, frontend on `:5173
 ### Voice-First, Cloud-Free
 faster-whisper runs on your GPU. Piper runs on CPU. webrtcvad handles silence detection. No API keys for speech, no per-call charges, no latency to a cloud STT endpoint. The EoT detector is a pure state machine — no neural model needed for turn-taking. Barge-in works because threading + VAD is all you need, not LiveKit + Redis.
 
+### Fully Offline with Ollama
+Set `DELA_PROFILE=offline`, point Dela at `http://localhost:11434/v1`, and everything runs locally — LLM, STT, TTS, VAD. No internet required. The offline profile blocks web-dependent tools (`fetch_url`, `check_host`) and the preflight checks detect Ollama automatically, listing available models. The Settings panel shows live Ollama status. Works with any Ollama model: llama3.1, qwen2.5, phi3, mistral, etc.
+
 ### Self-Auditing Security
 Dela scans its own codebase against the OWASP Top 10 for LLM Applications 2025 and the CWE Top 25 (2025). 20 checks covering prompt injection, secrets, command injection, path traversal, code injection, deserialization, SSRF, and more. Findings are prioritized P0–P4. A heartbeat check refreshes the checklist from authoritative sources daily. And when you find a vulnerability, the **FIX** button dispatches the system_expert agent to analyze the code and recommend or implement a patch.
 
@@ -92,11 +97,12 @@ A 2D canvas galaxy engine — no WebGL dependency. Particles swirl around a cent
 The provider, STT, TTS, live config, and tracing are each behind a thin module. Swap any of them by rewriting one file. Ollama works today because it exposes an OpenAI-compatible endpoint. New tools, agents, skills, channels, and heartbeat checks are each one file — the brain never changes.
 
 ### Profile-Aware
-Two security postures stored in `.env`:
+Three security postures stored in `.env`:
 - **Personal** — full access, standard security, wildcard CORS, all tools
 - **Work** — enterprise-grade, maximum injection defense, restricted CORS, blocked tools, extra confirmation on sensitive operations, WIZ integration hook
+- **Offline** — fully local, pairs with Ollama, blocks web-dependent tools, no internet needed
 
-Each profile can have its own API connection — GLM-5.2 at home, Sonnet at work.
+Each profile can have its own API connection — GLM-5.2 at home, Sonnet at work, llama3.1 offline.
 
 ---
 

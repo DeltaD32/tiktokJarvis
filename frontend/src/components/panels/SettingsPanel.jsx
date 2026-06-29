@@ -2,6 +2,71 @@ import { useState, useEffect } from 'react'
 import { HoloPanel } from '../HoloPanel'
 import { THEMES, applyTheme, getCurrentTheme } from '../../themes'
 
+const ConnInput = ({ label, value, onChange, placeholder, type = 'text', secret = false }) => (
+  <div style={{ marginBottom: 8 }}>
+    <div style={{ fontSize: 9, letterSpacing: '0.1em', color: 'var(--text-dim)', marginBottom: 3 }}>{label}</div>
+    <input
+      className="chat-input"
+      type={type}
+      style={{ width: '100%', fontSize: 11, padding: '5px 8px' }}
+      value={value || ''}
+      onChange={e => onChange(e.target.value)}
+      placeholder={placeholder}
+    />
+  </div>
+)
+
+function ConnEditor({ form, setForm, onSave, onCancel }) {
+  const set = (k, v) => setForm({ ...form, [k]: v })
+  const isOauth = form.auth_type === 'oauth'
+  return (
+    <div style={{ marginTop: 10, padding: 12, borderRadius: 10, border: '1px solid var(--border)', background: 'rgba(0,0,0,0.3)' }}>
+      <ConnInput label="NAME *" value={form.name} placeholder="my-openai" onChange={v => set('name', v)} />
+      <ConnInput label="BASE URL *" value={form.base_url} placeholder="https://api.openai.com/v1" onChange={v => set('base_url', v)} />
+      <ConnInput label="DEFAULT MODEL" value={form.model} placeholder="gpt-4o" onChange={v => set('model', v)} />
+
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 9, letterSpacing: '0.1em', color: 'var(--text-dim)', marginBottom: 3 }}>AUTH TYPE</div>
+        <select
+          className="chat-input"
+          style={{ width: '100%', padding: '5px 8px', fontSize: 11 }}
+          value={form.auth_type || 'simple'}
+          onChange={e => set('auth_type', e.target.value)}
+        >
+          <option value="simple">API Key (bearer)</option>
+          <option value="oauth">OAuth (client_id + secret → token)</option>
+        </select>
+      </div>
+
+      {!isOauth && (
+        <ConnInput label="API KEY" value={form.api_key} placeholder="sk-... (leave blank to keep existing)" onChange={v => set('api_key', v)} />
+      )}
+
+      {isOauth && (
+        <>
+          <ConnInput label="OAUTH CLIENT ID" value={form.oauth_client_id} placeholder="client-xxx" onChange={v => set('oauth_client_id', v)} />
+          <ConnInput label="OAUTH CLIENT SECRET" value={form.oauth_client_secret} placeholder="secret-xxx (leave blank to keep)" secret onChange={v => set('oauth_client_secret', v)} />
+          <ConnInput label="TOKEN URL" value={form.oauth_token_url} placeholder="https://.../oauth/token" onChange={v => set('oauth_token_url', v)} />
+          <ConnInput label="SCOPES (optional)" value={form.oauth_scopes} placeholder="" onChange={v => set('oauth_scopes', v)} />
+          <ConnInput label="CLIENT-ID HEADER NAME" value={form.oauth_header_name} placeholder="x-client-id" onChange={v => set('oauth_header_name', v)} />
+          <div style={{ fontSize: 10, color: 'var(--text-faint)', marginBottom: 10, lineHeight: 1.4 }}>
+            The token is sent as <code>Authorization: Bearer &lt;token&gt;</code>. The OAuth client_id is also sent in the header named above to the OpenAI-compatible endpoint. Token lifetime is capped at 7199s and auto-refreshed within 600s of expiry.
+          </div>
+        </>
+      )}
+
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button
+          className="icon-btn"
+          style={{ borderColor: 'var(--green)', color: 'var(--green)' }}
+          onClick={() => { if (form.name?.trim() && form.base_url?.trim()) onSave() }}
+        >save</button>
+        {onCancel && <button className="icon-btn" onClick={onCancel}>cancel</button>}
+      </div>
+    </div>
+  )
+}
+
 export function SettingsPanel({ onClose, message }) {
   const [settings, setSettings]   = useState(null)
   const [loading, setLoading]     = useState(true)
@@ -11,6 +76,17 @@ export function SettingsPanel({ onClose, message }) {
   const [envValue, setEnvValue]   = useState('')
   const [envMsg, setEnvMsg]       = useState('')
   const [profileMsg, setProfileMsg] = useState('')
+  const [ollama, setOllama]       = useState(null)
+  const [modelList, setModelList] = useState(null)
+  const [saveMsg, setSaveMsg]     = useState('')
+
+  // Connections state
+  const [connections, setConnections] = useState(null)
+  const [oauthStatus, setOauthStatus] = useState(null)
+  const [editingConn, setEditingConn] = useState(null)
+  const [connForm, setConnForm]       = useState({})
+  const [connMsg, setConnMsg]         = useState('')
+  const [connTest, setConnTest]       = useState(null)
 
   const refresh = () => {
     fetch('/api/settings')
@@ -20,6 +96,46 @@ export function SettingsPanel({ onClose, message }) {
   }
 
   useEffect(() => { refresh() }, [])
+  useEffect(() => {
+    if (section === 'profile') {
+      fetch('/api/ollama/status').then(r => r.json()).then(d => setOllama(d)).catch(() => {})
+    }
+    if (section === 'general') {
+      fetch('/api/models').then(r => r.json()).then(d => setModelList(d)).catch(() => {})
+    }
+    if (section === 'connections') {
+      refreshConnections()
+    }
+  }, [section])
+
+  const refreshConnections = () => {
+    fetch('/api/connections').then(r => r.json()).then(d => setConnections(d)).catch(() => {})
+    fetch('/api/oauth/status').then(r => r.json()).then(d => setOauthStatus(d)).catch(() => {})
+  }
+
+  const setLiveModel = (model) => {
+    fetch('/api/settings/live', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'model', value: model }),
+    }).then(() => {
+      setSaveMsg(`Model set to ${model}. Takes effect on next call.`)
+      setTimeout(() => setSaveMsg(''), 3000)
+      refresh()
+      fetch('/api/models').then(r => r.json()).then(d => setModelList(d)).catch(() => {})
+    })
+  }
+
+  const resetLiveModel = () => {
+    fetch('/api/settings/live/model', { method: 'DELETE' })
+      .then(r => r.json())
+      .then(() => {
+        setSaveMsg('Model reset to connection default. Takes effect on next call.')
+        setTimeout(() => setSaveMsg(''), 3000)
+        refresh()
+        fetch('/api/models').then(r => r.json()).then(d => setModelList(d)).catch(() => {})
+      })
+  }
 
   const selectTheme = (name) => {
     applyTheme(name)
@@ -93,6 +209,7 @@ export function SettingsPanel({ onClose, message }) {
   const sections = [
     { id: 'profile',  label: 'PROFILE' },
     { id: 'general',  label: 'GENERAL' },
+    { id: 'connections', label: 'CONNECTIONS' },
     { id: 'router',   label: 'ROUTER' },
     { id: 'voice',    label: 'VOICE' },
     { id: 'theme',    label: 'THEME' },
@@ -235,10 +352,57 @@ export function SettingsPanel({ onClose, message }) {
             </div>
           </div>
           <div style={{ padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
-            <strong style={{ color: 'var(--text-2)' }}>Personal:</strong> Full tool access, standard security, localhost-only. Use GLM-5.2 at home.<br/>
-            <strong style={{ color: 'var(--text-2)' }}>Work:</strong> Restricted tools, maximum injection defense, WIZ integration, verbose audit. Use Sonnet/GPT at work.<br/>
+            <strong style={{ color: 'var(--text-2)' }}>Personal:</strong> Full tool access, standard security, localhost-only. Cloud or local API.<br/>
+            <strong style={{ color: 'var(--text-2)' }}>Work:</strong> Restricted tools, maximum injection defense, WIZ integration, verbose audit.<br/>
+            <strong style={{ color: 'var(--green)' }}>Offline:</strong> Fully local — Ollama LLM + local voice stack. No internet required. Blocks web-dependent tools.<br/>
             <span style={{ color: 'var(--amber)' }}>Switching profiles or API config requires a restart.</span>
           </div>
+
+          {/* Ollama status */}
+          {ollama && (
+            <div style={{ marginTop: 12, padding: 14, borderRadius: 10, background: 'rgba(0,0,0,0.3)', border: `1px solid ${ollama.status === 'running' ? 'var(--green)' : 'var(--amber)'}` }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace" }}>
+                  OLLAMA STATUS
+                </span>
+                <span style={{
+                  fontSize: 9, fontWeight: 700,
+                  color: ollama.status === 'running' ? 'var(--green)' : 'var(--amber)',
+                  fontFamily: "'JetBrains Mono', monospace",
+                }}>
+                  {ollama.status === 'running' ? '● RUNNING' : '○ NOT RUNNING'}
+                </span>
+              </div>
+              {ollama.status === 'running' ? (
+                <>
+                  {ollama.models.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                      {ollama.models.map(m => (
+                        <div key={m.name} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--text-3)' }}>
+                          <span style={{ fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-2)' }}>{m.name}</span>
+                          <span style={{ color: 'var(--text-dim)' }}>{m.size_gb}GB</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 10, color: 'var(--amber)' }}>
+                      No models pulled — run: <code style={{ color: 'var(--accent)' }}>ollama pull llama3.1</code>
+                    </div>
+                  )}
+                  {ollama.model_count > 0 && settings.profile?.current !== 'offline' && (
+                    <div style={{ marginTop: 8, fontSize: 10, color: 'var(--accent)' }}>
+                      Switch to OFFLINE profile + set DELA_OFFLINE_MODEL to use Ollama
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div style={{ fontSize: 10, color: 'var(--text-dim)', lineHeight: 1.5 }}>
+                  Install from <a href="https://ollama.com" target="_blank" style={{ color: 'var(--accent)' }}>ollama.com</a>, then:
+                  <pre style={{ marginTop: 6, color: 'var(--text-2)', fontSize: 10 }}>ollama pull llama3.1{'\n'}ollama serve</pre>
+                </div>
+              )}
+            </div>
+          )}
         </>
       )}
 
@@ -246,8 +410,47 @@ export function SettingsPanel({ onClose, message }) {
       {!loading && section === 'general' && settings && (
         <>
           <Field label="ASSISTANT NAME" value={settings.model.name} />
-          <Field label="MODEL" value={settings.model.model} hint="Change via ENV VARS tab (DELA_MODEL) — requires restart" />
-          <Field label="API ENDPOINT" value={settings.model.base_url} hint="Change via ENV VARS tab (DELA_BASE_URL) — requires restart" />
+
+          {/* Live model selector — populated from the active connection */}
+          {modelList && modelList.status === 'ok' ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                <span style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--text-dim)' }}>ACTIVE MODEL</span>
+                <span style={{ fontSize: 8, color: 'var(--green)', padding: '1px 5px', border: '1px solid rgba(70,242,176,0.3)', borderRadius: 4 }}>LIVE</span>
+              </div>
+              <select
+                className="chat-input"
+                style={{ width: '100%', padding: '6px 8px', fontSize: 12 }}
+                value={settings.live_overrides?.model && settings.live_overrides.model !== 'default'
+                  ? settings.live_overrides.model : '__default__'}
+                onChange={e => {
+                  if (e.target.value === '__default__') resetLiveModel()
+                  else setLiveModel(e.target.value)
+                }}
+              >
+                {!settings.live_overrides?.model && <option value="__default__">— connection default ({modelList.current}) —</option>}
+                {modelList.models.map(m => (
+                  <option key={m} value={m}>{m}{m === modelList.current ? '  (default)' : ''}</option>
+                ))}
+              </select>
+              <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>
+                {modelList.count} models on {modelList.connection || 'env'} · switch instantly, no restart
+              </div>
+              {saveMsg && (
+                <div style={{ fontSize: 10, color: 'var(--green)', marginTop: 4 }}>{saveMsg}</div>
+              )}
+            </div>
+          ) : (
+            <Field
+              label="MODEL"
+              value={settings.model.model}
+              hint={modelList?.status === 'error'
+                ? `Could not list models: ${modelList?.error || ''} — set up a connection in the CONNECTIONS tab`
+                : 'Listing models from active connection…'}
+            />
+          )}
+
+          <Field label="API ENDPOINT" value={settings.model.base_url} hint="Manage via CONNECTIONS tab — assign a connection to this profile" />
           <LiveField
             label="THINKING LEVEL"
             settingKey="thinking_level"
@@ -265,6 +468,185 @@ export function SettingsPanel({ onClose, message }) {
             <Field label="TOOLS" value={`${settings.runtime.tools_count} registered`} />
             <Field label="AGENTS" value={`${settings.runtime.agents_count} registered`} />
             <Field label="PYTHON" value={settings.runtime.python_version} />
+          </div>
+        </>
+      )}
+
+      {/* CONNECTIONS */}
+      {!loading && section === 'connections' && (
+        <>
+          <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: "'JetBrains Mono', monospace" }}>
+            API CONNECTIONS — assign one per profile (live, no restart)
+          </div>
+
+          {/* OAuth monitor status */}
+          {oauthStatus && (
+            <div style={{ marginBottom: 12, padding: 10, borderRadius: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', fontSize: 11 }}>
+              <span style={{ color: oauthStatus.monitor_running ? 'var(--green)' : 'var(--amber)', fontFamily: "'JetBrains Mono', monospace", fontSize: 10 }}>
+                {oauthStatus.monitor_running ? '● OAUTH MONITOR: RUNNING' : '○ OAUTH MONITOR: OFF'}
+              </span>
+              <span style={{ color: 'var(--text-dim)', marginLeft: 10, fontSize: 10 }}>
+                auto-refresh margin: {oauthStatus.refresh_margin_s}s
+                {Object.keys(oauthStatus.tokens || {}).length > 0 && ` · ${Object.keys(oauthStatus.tokens).length} oauth token(s)`}
+              </span>
+            </div>
+          )}
+
+          {/* Per-profile assignment matrix */}
+          {settings?.profile?.available?.map(p => {
+            const assigned = connections?.assignments?.[p.name]
+            return (
+              <div key={p.name} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: 10, borderRadius: 10, border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)' }}>
+                <span style={{ font: "700 11px 'JetBrains Mono', monospace", color: p.name === settings.profile.current ? 'var(--accent)' : 'var(--text-2)', minWidth: 80 }}>
+                  {p.name.toUpperCase()}
+                </span>
+                <select
+                  className="chat-input"
+                  style={{ flex: 1, padding: '5px 8px', fontSize: 11 }}
+                  value={assigned || ''}
+                  onChange={e => {
+                    fetch('/api/connections/assign', {
+                      method: 'PUT',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ profile: p.name, connection: e.target.value }),
+                    }).then(() => {
+                      refreshConnections(); refresh()
+                      setConnMsg(`Assigned connection to ${p.name.toUpperCase()}. Next model call uses it — no restart.`)
+                      setTimeout(() => setConnMsg(''), 3000)
+                    })
+                  }}
+                >
+                  <option value="">— env default —</option>
+                  {(connections?.connections || []).map(c => (
+                    <option key={c.name} value={c.name}>
+                      {c.name} ({c.auth_type === 'oauth' ? 'OAuth' : 'api-key'})
+                    </option>
+                  ))}
+                </select>
+                {p.name === settings.profile.current && (
+                  <span style={{ fontSize: 9, color: 'var(--accent)', fontFamily: "'JetBrains Mono', monospace" }}>ACTIVE PROFILE</span>
+                )}
+              </div>
+            )
+          })}
+
+          {/* Connection list */}
+          <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-dim)', margin: '16px 0 8px', fontFamily: "'JetBrains Mono', monospace" }}>
+            CONFIGURED CONNECTIONS
+          </div>
+          {(connections?.connections || []).length === 0 && !editingConn && (
+            <div style={{ fontSize: 11, color: 'var(--text-dim)', marginBottom: 10 }}>
+              No connections configured. Using env defaults ({settings?.model?.base_url}). Click NEW CONNECTION to define one.
+            </div>
+          )}
+          {(connections?.connections || []).map(c => {
+            const isAssigned = connections?.assignments && Object.values(connections.assignments).includes(c.name)
+            const tok = oauthStatus?.tokens?.[c.name]
+            const isEditing = editingConn === c.name
+            return (
+              <div key={c.name} style={{ marginBottom: 8, padding: 12, borderRadius: 12, border: `1px solid ${isAssigned ? 'rgba(var(--accent-rgb),0.4)' : 'var(--border)'}`, background: isAssigned ? 'rgba(var(--accent-rgb),0.04)' : 'rgba(0,0,0,0.2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 6 }}>
+                  <span style={{ font: "600 12px 'JetBrains Mono', monospace", color: 'var(--text-2)' }}>
+                    {c.name}
+                    <span style={{ marginLeft: 8, fontSize: 9, color: c.auth_type === 'oauth' ? 'var(--amber)' : 'var(--text-dim)' }}>
+                      {c.auth_type === 'oauth' ? 'OAUTH' : 'API-KEY'}
+                    </span>
+                  </span>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    {c.auth_type === 'oauth' && (
+                      <button className="icon-btn" style={{ fontSize: 9 }} onClick={() => {
+                        fetch('/api/oauth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c.name }) })
+                          .then(r => r.json()).then(d => {
+                            if (d.ok) setConnMsg(`Token refreshed — ${c.name}`)
+                            else setConnMsg(`Refresh failed: ${d.error}`)
+                            setTimeout(() => setConnMsg(''), 4000)
+                            refreshConnections()
+                          })
+                      }}>refresh token</button>
+                    )}
+                    <button className="icon-btn" style={{ fontSize: 9 }} onClick={() => {
+                      setConnTest(null)
+                      fetch(`/api/connections/${encodeURIComponent(c.name)}/test`, { method: 'POST' })
+                        .then(r => r.json()).then(d => setConnTest({ name: c.name, ...d }))
+                    }}>test</button>
+                    <button className="icon-btn" style={{ fontSize: 9 }} onClick={() => {
+                      if (editingConn) { setEditingConn(null); setConnForm({}) }
+                      else { setEditingConn(c.name); setConnForm({ ...c }) }
+                    }}>{isEditing ? 'close' : 'edit'}</button>
+                    <button className="icon-btn" style={{ fontSize: 9, color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => {
+                      if (confirm(`Delete connection "${c.name}"?`)) {
+                        fetch(`/api/connections/${encodeURIComponent(c.name)}`, { method: 'DELETE' })
+                          .then(() => { refreshConnections(); refresh() })
+                      }
+                    }}>delete</button>
+                  </div>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace", marginTop: 4 }}>
+                  {c.base_url} · model: {c.model || '—'}
+                </div>
+                {c.auth_type === 'oauth' && tok && (
+                  <div style={{ fontSize: 10, marginTop: 4, color: tok.status === 'valid' ? 'var(--green)' : tok.status === 'expiring' ? 'var(--amber)' : 'var(--red)' }}>
+                    token: {tok.status}{tok.seconds_left > 0 ? ` · ${Math.floor(tok.seconds_left / 60)}m left` : ''}
+                  </div>
+                )}
+                {connTest && connTest.name === c.name && (
+                  <div style={{ marginTop: 6, fontSize: 10, color: connTest.ok ? 'var(--green)' : 'var(--red)', fontFamily: "'JetBrains Mono', monospace" }}>
+                    {connTest.ok ? '✓ ' : '✗ '}{connTest.message}
+                    {connTest.models && connTest.models.length > 0 && <div style={{ color: 'var(--text-dim)', marginTop: 2 }}>Models: {connTest.models.slice(0, 5).join(', ')}{connTest.models.length > 5 ? ` (+${connTest.models.length - 5})` : ''}</div>}
+                    {connTest.token_status && <div style={{ color: 'var(--text-dim)' }}>Token: {connTest.token_status.status} · {connTest.token_status.seconds_left > 0 ? Math.floor(connTest.token_status.seconds_left / 60) + 'm left' : 'expired'}</div>}
+                  </div>
+                )}
+
+                {/* Inline editor */}
+                {isEditing && (
+                  <ConnEditor
+                    form={connForm} setForm={setConnForm}
+                    onSave={() => {
+                      fetch('/api/connections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(connForm) })
+                        .then(r => r.json()).then(d => {
+                          if (d.ok) { setEditingConn(null); setConnForm({}); setConnMsg(`Saved connection: ${connForm.name}`); setTimeout(() => setConnMsg(''), 3000); refreshConnections(); refresh() }
+                          else setConnMsg(d.error || 'Save failed')
+                        })
+                    }}
+                  />
+                )}
+              </div>
+            )
+          })}
+
+          {/* New connection button / editor */}
+          {!editingConn && (
+            <button className="icon-btn" style={{ marginTop: 8, borderColor: 'var(--accent)', color: 'var(--accent)' }} onClick={() => {
+              setEditingConn('__new__')
+              setConnForm({ name: '', base_url: '', api_key: '', model: '', auth_type: 'simple', extra_headers: {} })
+              setConnTest(null)
+            }}>+ new connection</button>
+          )}
+          {editingConn === '__new__' && (
+            <>
+              <ConnEditor
+                form={connForm} setForm={setConnForm}
+                onSave={() => {
+                  fetch('/api/connections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(connForm) })
+                    .then(r => r.json()).then(d => {
+                      if (d.ok) { setEditingConn(null); setConnForm({}); setConnMsg(`Created connection: ${connForm.name}`); setTimeout(() => setConnMsg(''), 3000); refreshConnections(); refresh() }
+                      else setConnMsg(d.error || 'Create failed')
+                    })
+                }}
+                onCancel={() => { setEditingConn(null); setConnForm({}) }}
+              />
+            </>
+          )}
+
+          {connMsg && (
+            <div style={{ marginTop: 10, padding: 8, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent)', fontSize: 11, color: 'var(--accent)' }}>
+              {connMsg}
+            </div>
+          )}
+
+          <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.2)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
+            <div style={{ color: 'var(--accent)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.1em' }}>HOW IT WORKS</div>
+            Each security profile can be assigned one connection. Assignments and model selection take effect on the next model call — no restart. OAuth connections auto-refresh their bearer token when it's within {oauthStatus?.refresh_margin_s || 600}s of expiry (background monitor + lazy refresh on every call). Leave a profile's assignment blank to use the env default (DELA_*_BASE_URL / API_KEY / MODEL).
           </div>
         </>
       )}

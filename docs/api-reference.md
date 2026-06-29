@@ -36,6 +36,7 @@ The FastAPI server (`dela/server.py`) exposes 40 REST endpoints + 1 WebSocket.
 |---|---|---|
 | `/api/uplink` | GET | API connection + auth status for active profile |
 | `/api/status` | GET | Heartbeat active, cost, notice count |
+| `/api/ollama/status` | GET | Check if Ollama is running + list available models |
 
 ## Voice I/O
 

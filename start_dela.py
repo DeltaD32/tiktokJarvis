@@ -174,6 +174,57 @@ def preflight() -> bool:
             fail(f"Port {port} is in use — close the process using it or change the port")
             all_ok = False
 
+    # 8. Ollama detection (if profile is offline or base_url points to Ollama)
+    base_url = ""
+    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+        if line.startswith("DELA_BASE_URL=") and not line.startswith("DELA_"):
+            base_url = line.split("=", 1)[1].strip()
+        if line.startswith(f"DELA_{profile.upper()}_BASE_URL="):
+            base_url = line.split("=", 1)[1].strip()
+
+    is_ollama = "localhost:11434" in base_url or "offline" in profile.lower()
+
+    if is_ollama:
+        info("Ollama mode detected — checking local server...")
+        try:
+            import urllib.request
+            req = urllib.request.Request("http://localhost:11434/api/tags", headers={"User-Agent": "Dela/0.1"})
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                if resp.status == 200:
+                    import json as _json
+                    data = _json.loads(resp.read())
+                    models = [m.get("name", "?") for m in data.get("models", [])]
+                    if models:
+                        ok(f"Ollama running — {len(models)} model(s): {', '.join(models[:5])}")
+                    else:
+                        warn("Ollama running but no models pulled — run: ollama pull llama3.1")
+        except Exception:
+            fail("Ollama not reachable at http://localhost:11434 — run: ollama serve")
+            info("Install from https://ollama.com, then: ollama pull llama3.1 && ollama serve")
+            all_ok = False
+    else:
+        # Non-Ollama mode — check if Ollama is available as an option
+        try:
+            import urllib.request
+            req = urllib.request.Request("http://localhost:11434/api/tags", headers={"User-Agent": "Dela/0.1"})
+            with urllib.request.urlopen(req, timeout=2) as resp:
+                if resp.status == 200:
+                    info("Ollama detected at localhost:11434 — set DELA_PROFILE=offline to use it")
+        except Exception:
+            pass  # Ollama not running — fine for cloud mode
+
+    # 9. Voice models check (optional — only info)
+    models_dir = ROOT / "models"
+    if models_dir.exists():
+        whisper_models = list(models_dir.rglob("model.bin")) + list(models_dir.rglob("model.pt"))
+        piper_voices = list(models_dir.rglob("*.onnx"))
+        if whisper_models or piper_voices:
+            ok(f"Voice models cached ({len(whisper_models)} Whisper, {len(piper_voices)} Piper)")
+        else:
+            info("Voice models not cached yet — will download on first voice use")
+    else:
+        info("No models/ dir — voice models will download on first use")
+
     print()
     return all_ok
 

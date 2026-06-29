@@ -230,16 +230,18 @@ export default function App() {
       <div className="corner-bracket bl" />
       <div className="corner-bracket br" />
 
-      {/* Top strip */}
-      <TopStrip
-        state={orbState}
-        cost={cost}
-        noticeCount={noticeCount}
-        connected={connected}
-        input={input}
-        setInput={setInput}
-        onSend={handleSend}
-      />
+      {/* Top strip — only when not idle (idle view has its own input + logo) */}
+      {!isIdle && (
+        <TopStrip
+          state={orbState}
+          cost={cost}
+          noticeCount={noticeCount}
+          connected={connected}
+          input={input}
+          setInput={setInput}
+          onSend={handleSend}
+        />
+      )}
 
       {/* Data panel buttons (right side of top strip area — small buttons) */}
       <div style={{ position: 'absolute', top: 14, right: 24, zIndex: 7, display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 320 }}>

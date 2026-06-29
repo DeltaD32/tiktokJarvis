@@ -39,8 +39,19 @@ async def lifespan(app: FastAPI):
     _main_loop = asyncio.get_event_loop()
     set_confirmer(WebSocketConfirmer())
     heartbeat.start()
+    # Start the OAuth token auto-refresh daemon (no-op if no oauth connections)
+    try:
+        from dela import oauth
+        oauth.start_monitor()
+    except Exception:
+        pass
     yield
     heartbeat.stop()
+    try:
+        from dela import oauth
+        oauth.stop_monitor()
+    except Exception:
+        pass
 
 
 app = FastAPI(title="Dela", lifespan=lifespan)
@@ -209,43 +220,104 @@ def api_analytics():
     return audit.analytics()
 
 
-@app.get("/api/uplink")
-def api_uplink():
-    """Check API connection + auth status for the active profile."""
-    import time
-    from dela import config
-    from dela.profiles import get_current_profile_name
+@app.get("/api/models")
+def api_list_models_endpoint():
+    """List available models from the current provider's models endpoint.
 
-    client = None
+    Uses the active connection for the current profile (so OAuth/custom-header
+    endpoints work too). Returns a list of model IDs. Useful for live model
+    switching.
+    """
+    import time
+    from dela import live_config
+    from dela.profiles import get_current_profile_name
+    from dela import connections
+    from dela.provider import _effective_model
+
+    conn = connections.get_active()
+    base_url = conn.get("base_url", "")
+    t0 = time.time()
     try:
         from openai import OpenAI
-        client = OpenAI(base_url=config.BASE_URL, api_key=config.API_KEY, timeout=10)
+        client = OpenAI(
+            base_url=base_url,
+            api_key=conn.get("api_key") or "missing",
+            default_headers=conn.get("extra_headers") or None,
+            timeout=10,
+        )
+        models = client.models.list()
+        model_ids = sorted([m.id for m in models.data])
+        current = _effective_model()
+        latency = round((time.time() - t0) * 1000)
+        return {
+            "status": "ok",
+            "profile": get_current_profile_name(),
+            "connection": conn.get("name", ""),
+            "base_url": base_url,
+            "current": current,
+            "count": len(model_ids),
+            "models": model_ids,
+            "latency_ms": latency,
+        }
     except Exception as e:
         return {
             "status": "error",
             "profile": get_current_profile_name(),
-            "model": config.MODEL,
-            "base_url": config.BASE_URL,
+            "connection": conn.get("name", ""),
+            "base_url": base_url,
+            "current": _effective_model(),
+            "count": 0,
+            "models": [],
+            "error": str(e)[:200],
+            "latency_ms": round((time.time() - t0) * 1000),
+        }
+
+
+@app.get("/api/uplink")
+def api_uplink():
+    """Check API connection + auth status for the active profile connection."""
+    import time
+    from dela import connections
+    from dela.profiles import get_current_profile_name
+    from dela.provider import _effective_model
+
+    conn = connections.get_active()
+    base_url = conn.get("base_url", "")
+    try:
+        from openai import OpenAI
+        client = OpenAI(
+            base_url=base_url,
+            api_key=conn.get("api_key") or "missing",
+            default_headers=conn.get("extra_headers") or None,
+            timeout=10,
+        )
+    except Exception as e:
+        return {
+            "status": "error",
+            "profile": get_current_profile_name(),
+            "connection": conn.get("name", ""),
+            "model": _effective_model(),
+            "base_url": base_url,
             "error": str(e)[:200],
             "latency_ms": 0,
         }
 
     t0 = time.time()
     try:
-        # Lightweight call: list models (works on all OpenAI-compatible endpoints)
         client.models.list()
         latency = round((time.time() - t0) * 1000)
         return {
             "status": "connected",
             "profile": get_current_profile_name(),
-            "model": config.MODEL,
-            "base_url": config.BASE_URL,
+            "connection": conn.get("name", ""),
+            "model": _effective_model(),
+            "base_url": base_url,
             "latency_ms": latency,
         }
     except Exception as e:
         latency = round((time.time() - t0) * 1000)
         err_str = str(e)
-        if "401" in err_str or "auth" in err_str.lower() or "api key" in err_str.lower():
+        if "401" in err_str or "auth" in err_str.lower() or "api key" in err_str.lower() or "token" in err_str.lower():
             status = "auth_error"
         elif "connection" in err_str.lower() or "timeout" in err_str.lower() or "unreachable" in err_str.lower():
             status = "unreachable"
@@ -254,10 +326,57 @@ def api_uplink():
         return {
             "status": status,
             "profile": get_current_profile_name(),
-            "model": config.MODEL,
-            "base_url": config.BASE_URL,
+            "connection": conn.get("name", ""),
+            "model": _effective_model(),
+            "base_url": base_url,
             "error": err_str[:200],
             "latency_ms": latency,
+        }
+
+
+@app.get("/api/ollama/status")
+def api_ollama_status():
+    """Check if Ollama is running locally and list available models."""
+    import urllib.request
+    import urllib.error
+
+    try:
+        req = urllib.request.Request(
+            "http://localhost:11434/api/tags",
+            headers={"User-Agent": "Dela/0.1"},
+        )
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            if resp.status == 200:
+                import json as _json
+                data = _json.loads(resp.read())
+                models = []
+                for m in data.get("models", []):
+                    models.append({
+                        "name": m.get("name", "?"),
+                        "size_gb": round(m.get("size", 0) / 1e9, 1),
+                        "modified": m.get("modified_at", ""),
+                    })
+                return {
+                    "status": "running",
+                    "url": "http://localhost:11434",
+                    "models": models,
+                    "model_count": len(models),
+                }
+    except urllib.error.URLError:
+        return {
+            "status": "not_running",
+            "url": "http://localhost:11434",
+            "models": [],
+            "model_count": 0,
+            "hint": "Install from https://ollama.com, then run: ollama serve",
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "url": "http://localhost:11434",
+            "models": [],
+            "model_count": 0,
+            "error": str(e)[:200],
         }
 
 
@@ -475,6 +594,7 @@ def api_get_settings():
     from dela import config, hb_config
     from dela.channels.config import load as load_channels
     from dela.profiles import get_current_profile, list_profiles, get_current_profile_name
+    from dela import connections
     return {
         "profile": {
             "current": get_current_profile_name(),
@@ -487,6 +607,7 @@ def api_get_settings():
             "base_url": config.BASE_URL,
             "thinking_level": config.THINKING_LEVEL or "(off)",
         },
+        "connection": connections.describe_active(),
         "voice": {
             "whisper_model": config.WHISPER_MODEL,
             "whisper_device": config.WHISPER_DEVICE,
@@ -510,6 +631,7 @@ def api_get_settings():
             "agents_count": len(__import__('dela.agents', fromlist=['list_agents']).list_agents()),
         },
         "live": __import__('dela.live_config', fromlist=['all_live']).all_live(),
+        "live_overrides": __import__('dela.live_config', fromlist=['all_overrides']).all_overrides(),
     }
 
 @app.put("/api/settings/heartbeat")
@@ -595,6 +717,130 @@ def api_reset_live_setting(key: str):
         return {"ok": False, "error": f"'{key}' is not a live setting."}
     live_config.reset(key)
     return {"ok": True, "key": key, "value": live_config.get(key), "note": "Reset to default."}
+
+
+# ── API Connections + OAuth endpoints ──────────────────────────────────────────
+
+
+@app.get("/api/connections")
+def api_list_connections():
+    """List all configured API connections (secrets masked) and profile assignments."""
+    from dela import connections
+    data = connections.load()
+    return {
+        "connections": connections.list_connections(masked=True),
+        "assignments": data.get("assignments", {}),
+        "active_profile": connections.active_profile_name(),
+        "active": connections.describe_active(),
+    }
+
+
+@app.get("/api/connections/{name}")
+def api_get_connection(name: str):
+    from dela import connections
+    conn = connections.get_connection(name)
+    if conn is None:
+        return {"error": f"Connection '{name}' not found"}
+    masked = connections._mask(conn)
+    return masked
+
+
+@app.post("/api/connections")
+def api_upsert_connection(body: dict):
+    from dela import connections
+    # If api_key/secret fields are blank or all-masked, preserve existing secret
+    name = (body.get("name") or "").strip()
+    if not name:
+        return {"ok": False, "error": "Connection 'name' is required"}
+    existing = connections.get_connection(name) or {}
+    preserved = {}
+    for secret_field in ("api_key", "oauth_client_secret"):
+        v = body.get(secret_field, "")
+        if v is None or v == "" or set(str(v)) <= {"*"}:
+            preserved[secret_field] = existing.get(secret_field, "")
+        else:
+            preserved[secret_field] = v
+    body.update(preserved)
+    try:
+        conn = connections.upsert_connection(body)
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+    # Drop cached oauth token if oauth config changed materially
+    if conn.get("auth_type") == "oauth":
+        try:
+            from dela import oauth
+            oauth.force_refresh(conn)
+        except Exception:
+            pass
+    return {"ok": True, "connection": connections._mask(conn)}
+
+
+@app.delete("/api/connections/{name}")
+def api_delete_connection(name: str):
+    from dela import connections
+    existed = connections.delete_connection(name)
+    # Also drop any cached oauth token
+    try:
+        from dela import oauth
+        with oauth._lock:
+            oauth._TOKENS.pop(name, None)
+        oauth._persist()
+    except Exception:
+        pass
+    return {"ok": existed, "deleted": name if existed else None}
+
+
+@app.put("/api/connections/assign")
+def api_assign_connection(body: dict):
+    from dela import connections
+    profile = body.get("profile", "")
+    conn_name = body.get("connection", "")
+    if not profile:
+        return {"ok": False, "error": "'profile' is required"}
+    ok = connections.assign_connection(profile, conn_name if conn_name else None)
+    return {"ok": ok, "profile": profile, "connection": conn_name or None,
+            "note": "Applied immediately — next model call uses the new connection."}
+
+
+@app.post("/api/connections/{name}/test")
+def api_test_connection(name: str):
+    from dela import connections, oauth
+    conn = connections.get_connection(name)
+    if conn is None:
+        return {"ok": False, "error": f"Connection '{name}' not found"}
+    return oauth.test_connection(conn)
+
+
+@app.get("/api/oauth/status")
+def api_oauth_status():
+    """OAuth monitor status + per-connection token info for oauth connections."""
+    from dela import connections, oauth
+    data = connections.load()
+    tokens = {}
+    for name, c in data.get("connections", {}).items():
+        if c.get("auth_type") == "oauth":
+            tokens[name] = oauth.token_info(c)
+    return {
+        "monitor_running": oauth.is_monitor_running(),
+        "refresh_margin_s": oauth.REFRESH_MARGIN,
+        "tokens": tokens,
+    }
+
+
+@app.post("/api/oauth/refresh")
+def api_oauth_refresh(body: dict):
+    from dela import connections, oauth
+    name = body.get("name", "")
+    conn = connections.get_connection(name)
+    if conn is None:
+        return {"ok": False, "error": f"Connection '{name}' not found"}
+    if conn.get("auth_type") != "oauth":
+        return {"ok": False, "error": f"Connection '{name}' is not an OAuth connection"}
+    try:
+        tok = oauth.force_refresh(conn)
+        return {"ok": True, "token_status": oauth.token_info(conn)}
+    except Exception as e:
+        return {"ok": False, "error": str(e), "token_status": oauth.token_info(conn)}
 
 
 @app.put("/api/memory/{fact_id}")

@@ -53,6 +53,7 @@ LIVE_SETTINGS = {
     "model_router_enabled": str,  # "true"/"false" stored as string
     "model_fast": str,            # model name for fast tier
     "model_premium": str,         # model name for premium tier
+    "model": str,                 # primary model — hot-reloadable (read by provider on each call)
 }
 
 # Settings that require restart
@@ -110,6 +111,16 @@ def all_overrides() -> dict[str, Any]:
     """Return only the settings that have been overridden (not defaults)."""
     with _lock:
         return dict(_overrides)
+
+
+def get_override(key: str) -> Any:
+    """Return the live override value for a key, or None if not overridden.
+
+    Unlike `get()`, this does NOT fall back to config.py defaults — it only
+    returns a value when the user has explicitly set a live override.
+    """
+    with _lock:
+        return _overrides.get(key)
 
 
 def is_live(key: str) -> bool:
