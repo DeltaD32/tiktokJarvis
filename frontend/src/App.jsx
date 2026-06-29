@@ -1,54 +1,103 @@
-import { useState } from 'react'
-import { Canvas } from '@react-three/fiber'
-import { EffectComposer, Bloom } from '@react-three/postprocessing'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { AnimatePresence } from 'framer-motion'
 
-import { JarvisOrb }            from './components/JarvisOrb'
-import { TopBar }               from './components/TopBar'
-import { ConversationOverlay }  from './components/ConversationOverlay'
-import { ConfirmationDialog }   from './components/ConfirmationDialog'
-import { TasksPanel }           from './components/panels/TasksPanel'
+import { ParticleCanvas }      from './components/ParticleCanvas'
+import { TopStrip }            from './components/TopStrip'
+import { Dock }                from './components/Dock'
+import { VoiceHud }            from './components/VoiceHud'
+import { HitlGate }            from './components/HitlGate'
+import { HiveWindow }          from './components/HiveWindow'
+import { StreamWindow }        from './components/StreamWindow'
+import { SandboxWindow }       from './components/SandboxWindow'
+import { HoloPanel }           from './components/HoloPanel'
+import { MemoryPanel }         from './components/panels/MemoryPanel'
+import { StateBrowserPanel }   from './components/panels/StateBrowserPanel'
+import { ToolBrowserPanel }    from './components/panels/ToolBrowserPanel'
+import { AuditPanel }          from './components/panels/AuditPanel'
 import { NoticesPanel }         from './components/panels/NoticesPanel'
-import { AuditPanel }           from './components/panels/AuditPanel'
-import { MemoryPanel }          from './components/panels/MemoryPanel'
-import { StateBrowserPanel }    from './components/panels/StateBrowserPanel'
-import { ToolBrowserPanel }     from './components/panels/ToolBrowserPanel'
+import { TasksPanel }           from './components/panels/TasksPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
+
+const ACCENT_RGB = {
+  idle:     '0,240,255',
+  thinking: '179,136,255',
+  speaking: '0,240,255',
+  busy:     '255,179,0',
+  alert:    '255,90,69',
+  complete: '70,242,176',
+}
+
+const IDLE_STATS = [
+  { label: 'NEURAL CORES', value: '5', sub: 'online', pos: { left: '9%', top: '27%' } },
+  { label: 'MEMORY POOL', value: '44', sub: 'tools', pos: { right: '9%', top: '27%' } },
+  { label: 'UPLINK', value: 'SECURE', pos: { left: '11%', top: '60%' } },
+  { label: 'AGENTS', value: '5', sub: 'ready', pos: { right: '11%', top: '60%' } },
+]
 
 export default function App() {
   const {
-    connected,
-    orbState,
-    conversation,
-    currentStream,
-    toolStatus,
-    activePanel,
-    panelMessage,
-    confirmRequest,
-    notices,
-    noticeCount,
-    heartbeatActive,
-    cost,
-    sendMessage,
-    sendConfirm,
-    closePanel,
-    dismissNotice,
-    killHeartbeat,
-    resumeHeartbeat,
+    connected, orbState, conversation, currentStream, toolStatus,
+    activePanel, panelMessage, confirmRequest,
+    notices, noticeCount, heartbeatActive, cost,
+    sendMessage, sendConfirm, closePanel, dismissNotice,
+    killHeartbeat, resumeHeartbeat,
   } = useDelaWS()
 
   const [input, setInput] = useState('')
+  const [panels, setPanels] = useState({
+    hive:    { open: false, x: 28, y: 96, z: 1 },
+    stream:  { open: false, x: 360, y: 460, z: 1 },
+    sandbox: { open: false, x: 880, y: 96, z: 1 },
+  })
   const [localPanel, setLocalPanel] = useState(null)
+  const zRef = useRef(1)
 
-  const openPanel = (p) => {
-    setLocalPanel(p)
-  }
+  // Update CSS accent variables when state changes
+  useEffect(() => {
+    const rgb = ACCENT_RGB[orbState] || ACCENT_RGB.idle
+    document.documentElement.style.setProperty('--accent-rgb', rgb)
+    document.documentElement.style.setProperty('--accent', `rgb(${rgb})`)
+  }, [orbState])
 
-  const handleClose = () => {
-    closePanel()
-    setLocalPanel(null)
-  }
+  // Initialize panel positions based on viewport
+  useEffect(() => {
+    const W = window.innerWidth, H = window.innerHeight
+    setPanels({
+      hive:    { open: false, x: 28, y: 96, z: 1 },
+      sandbox: { open: false, x: Math.max(28, W - 458), y: 96, z: 1 },
+      stream:  { open: false, x: Math.max(28, Math.round((W - 560) / 2)), y: Math.max(120, H - 430), z: 1 },
+    })
+  }, [])
 
+  const togglePanel = useCallback((id) => {
+    setPanels(prev => ({
+      ...prev,
+      [id]: { ...prev[id], open: !prev[id].open, z: ++zRef.current },
+    }))
+  }, [])
+
+  const closeFloatPanel = useCallback((id) => {
+    setPanels(prev => ({ ...prev, [id]: { ...prev[id], open: false } }))
+  }, [])
+
+  const focusPanel = useCallback((id) => {
+    setPanels(prev => ({ ...prev, [id]: { ...prev[id], z: ++zRef.current } }))
+  }, [])
+
+  const dragPanel = useCallback((id, x, y) => {
+    setPanels(prev => ({ ...prev, [id]: { ...prev[id], x, y } }))
+  }, [])
+
+  const minimizeAll = useCallback(() => {
+    setPanels(prev => {
+      const n = {}
+      for (const k in prev) n[k] = { ...prev[k], open: false }
+      return n
+    })
+  }, [])
+
+  const openLocalPanel = (p) => setLocalPanel(p)
+  const handleClose = () => { closePanel(); setLocalPanel(null) }
   const panel = activePanel ?? localPanel
 
   const handleSend = () => {
@@ -65,121 +114,201 @@ export default function App() {
     }
   }
 
+  const isIdle = orbState === 'idle'
+  const isSpeaking = orbState === 'speaking'
+  const caption = currentStream || (toolStatus || '')
+
   return (
     <div className="app">
-      {/* Three.js canvas fills the background */}
-      <div className="canvas-wrap">
-        <Canvas
-          camera={{ position: [0, 0, 6], fov: 45 }}
-          gl={{ alpha: true, antialias: true }}
-          style={{ background: 'transparent' }}
-          dpr={Math.min(window.devicePixelRatio, 2)}
-        >
-          <JarvisOrb state={orbState} />
-          <EffectComposer>
-            <Bloom
-              intensity={1.8}
-              luminanceThreshold={0.04}
-              luminanceSmoothing={0.88}
-              height={512}
-            />
-          </EffectComposer>
-        </Canvas>
-      </div>
+      {/* Grid overlay */}
+      <div className="grid-overlay" />
 
-      {/* HUD corner decorations */}
-      <div className="hud-corners">
-        <div className="hud-corner tl" />
-        <div className="hud-corner tr" />
-        <div className="hud-corner bl" />
-        <div className="hud-corner br" />
-      </div>
+      {/* Particle canvas (galaxy engine) */}
+      <ParticleCanvas state={orbState} speaking={isSpeaking} />
 
-      {/* Top bar */}
-      <TopBar
-        orbState={orbState}
-        heartbeatActive={heartbeatActive}
+      {/* Corner brackets */}
+      <div className="corner-bracket tl" />
+      <div className="corner-bracket tr" />
+      <div className="corner-bracket bl" />
+      <div className="corner-bracket br" />
+
+      {/* Top strip */}
+      <TopStrip
+        state={orbState}
         cost={cost}
         noticeCount={noticeCount}
+        agentCount={5}
         connected={connected}
-        onKill={killHeartbeat}
-        onResume={resumeHeartbeat}
-        onOpenNotices={() => openPanel('notices')}
-        onOpenAudit={() => openPanel('audit')}
-        onOpenMemory={() => openPanel('memory')}
-        onOpenState={() => openPanel('state')}
-        onOpenTools={() => openPanel('tools')}
+        input={input}
+        setInput={setInput}
+        onSend={handleSend}
       />
 
-      {/* Conversation overlay */}
-      <ConversationOverlay
-        conversation={conversation}
-        currentStream={currentStream}
-        toolStatus={toolStatus}
-      />
-
-      {/* Input bar */}
-      <div className="input-row">
-        <input
-          className="chat-input"
-          value={input}
-          onChange={e => setInput(e.target.value)}
-          onKeyDown={handleKey}
-          placeholder="Speak to Dela…"
-          autoFocus
-        />
-        <button
-          className="send-btn"
-          onClick={handleSend}
-          disabled={!input.trim() || orbState === 'thinking'}
-        >
-          ▶
-        </button>
+      {/* Data panel buttons (right side of top strip area — small buttons) */}
+      <div style={{ position: 'absolute', top: 18, right: 30, zIndex: 7, display: 'flex', gap: 4 }}>
+        <button className="data-btn" onClick={() => openLocalPanel('memory')}>MEMORY</button>
+        <button className="data-btn" onClick={() => openLocalPanel('state')}>STATE</button>
+        <button className="data-btn" onClick={() => openLocalPanel('audit')}>AUDIT</button>
+        <button className="data-btn" onClick={() => openLocalPanel('tasks')}>TASKS</button>
       </div>
 
-      {/* Slide-in panels */}
+      {/* Idle view */}
+      {isIdle && (
+        <div className="idle-view">
+          {IDLE_STATS.map((s, i) => (
+            <div key={i} className="idle-corner-stat" style={s.pos}>
+              <div className="label">{s.label}</div>
+              <div className="value">
+                {s.value}
+                {s.sub && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}> {s.sub}</span>}
+              </div>
+            </div>
+          ))}
+          <div className="idle-center">
+            <div>
+              <div className="idle-logo">DELA</div>
+              <div className="idle-subtitle">all systems nominal — awaiting your directive</div>
+            </div>
+            <div className="idle-input-wrap">
+              <span className="idle-input-prompt">&gt;</span>
+              <input
+                className="idle-input"
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKey}
+                placeholder="Issue a directive — natural language or /command..."
+                autoFocus
+              />
+              <button className="execute-btn" onClick={handleSend}>EXECUTE</button>
+            </div>
+            <div className="chip-row">
+              <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
+              <button className="chip" onClick={() => { sendMessage('Search your state for Bruce'); setInput('') }}>Search memory</button>
+              <button className="chip" onClick={() => openLocalPanel('state')}>Browse state</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Voice HUD */}
+      <VoiceHud speaking={isSpeaking} caption={caption} />
+
+      {/* Conversation overlay (when not idle) */}
+      {!isIdle && (conversation.length > 0 || currentStream || toolStatus) && (
+        <div className="conv-overlay">
+          {conversation.slice(-6).map(msg => (
+            <div key={msg.id} className={`conv-msg ${msg.role}`}>
+              {msg.content.slice(0, 200)}{msg.content.length > 200 ? '...' : ''}
+            </div>
+          ))}
+          {currentStream && (
+            <div className="conv-msg streaming">
+              {currentStream.slice(0, 200)}{currentStream.length > 200 ? '...' : ''}
+              <span style={{ animation: 'jblink 1s steps(1) infinite', color: 'var(--accent)' }}>▍</span>
+            </div>
+          )}
+          {toolStatus && (
+            <div className="conv-msg tool-blip">{toolStatus}</div>
+          )}
+        </div>
+      )}
+
+      {/* Dock */}
+      {!isIdle && (
+        <Dock
+          state={orbState}
+          panels={panels}
+          onToggle={togglePanel}
+          onMinimize={minimizeAll}
+          heartbeatActive={heartbeatActive}
+          onToggleHeartbeat={heartbeatActive ? killHeartbeat : resumeHeartbeat}
+          noticeCount={noticeCount}
+          onOpenNotices={() => openLocalPanel('notices')}
+        />
+      )}
+
+      {/* Floating windows */}
+      {panels.hive.open && (
+        <HiveWindow
+          panel={panels.hive}
+          onClose={() => closeFloatPanel('hive')}
+          onFocus={() => focusPanel('hive')}
+          onDragMove={(x, y) => dragPanel('hive', x, y)}
+          systemState={orbState}
+        />
+      )}
+      {panels.stream.open && (
+        <StreamWindow
+          panel={panels.stream}
+          onClose={() => closeFloatPanel('stream')}
+          onFocus={() => focusPanel('stream')}
+          onDragMove={(x, y) => dragPanel('stream', x, y)}
+          conversation={conversation}
+          currentStream={currentStream}
+          toolStatus={toolStatus}
+          systemState={orbState}
+        />
+      )}
+      {panels.sandbox.open && (
+        <SandboxWindow
+          panel={panels.sandbox}
+          onClose={() => closeFloatPanel('sandbox')}
+          onFocus={() => focusPanel('sandbox')}
+          onDragMove={(x, y) => dragPanel('sandbox', x, y)}
+          toolStatus={toolStatus}
+          conversation={conversation}
+        />
+      )}
+
+      {/* Slide-in data panels */}
       <AnimatePresence>
-        {panel === 'tasks' && (
-          <TasksPanel key="tasks" onClose={handleClose} message={panelMessage} />
-        )}
-        {panel === 'notices' && (
-          <NoticesPanel
-            key="notices"
-            onClose={handleClose}
-            message={panelMessage}
-            notices={notices}
-            onDismiss={dismissNotice}
-          />
-        )}
-        {panel === 'audit' && (
-          <AuditPanel key="audit" onClose={handleClose} message={panelMessage} />
-        )}
         {panel === 'memory' && (
-          <MemoryPanel key="memory" onClose={handleClose} message={panelMessage} />
+          <HoloPanel key="memory" title="Memory" message={panelMessage} onClose={handleClose}>
+            <MemoryPanel onClose={handleClose} message={panelMessage} />
+          </HoloPanel>
         )}
         {panel === 'state' && (
-          <StateBrowserPanel key="state" onClose={handleClose} message={panelMessage} />
+          <HoloPanel key="state" title="State Browser" message={panelMessage} onClose={handleClose}>
+            <StateBrowserPanel onClose={handleClose} message={panelMessage} />
+          </HoloPanel>
         )}
         {panel === 'tools' && (
-          <ToolBrowserPanel key="tools" onClose={handleClose} message={panelMessage} />
+          <HoloPanel key="tools" title="Tool Browser" message={panelMessage} onClose={handleClose}>
+            <ToolBrowserPanel onClose={handleClose} message={panelMessage} />
+          </HoloPanel>
+        )}
+        {panel === 'audit' && (
+          <HoloPanel key="audit" title="Audit Log" message={panelMessage} onClose={handleClose}>
+            <AuditPanel onClose={handleClose} message={panelMessage} />
+          </HoloPanel>
+        )}
+        {panel === 'notices' && (
+          <HoloPanel key="notices" title="Notices" message={panelMessage} onClose={handleClose}>
+            <NoticesPanel
+              onClose={handleClose}
+              message={panelMessage}
+              notices={notices}
+              onDismiss={dismissNotice}
+            />
+          </HoloPanel>
+        )}
+        {panel === 'tasks' && (
+          <HoloPanel key="tasks" title="Tasks" message={panelMessage} onClose={handleClose}>
+            <TasksPanel onClose={handleClose} message={panelMessage} />
+          </HoloPanel>
         )}
       </AnimatePresence>
 
-      {/* Confirmation dialog */}
-      <AnimatePresence>
-        {confirmRequest && (
-          <ConfirmationDialog
-            key="confirm"
-            request={confirmRequest}
-            onConfirm={() => sendConfirm(confirmRequest.id, true)}
-            onDeny={() => sendConfirm(confirmRequest.id, false)}
-          />
-        )}
-      </AnimatePresence>
+      {/* HITL gate */}
+      <HitlGate
+        request={confirmRequest}
+        onApprove={() => sendConfirm(confirmRequest.id, true)}
+        onDeny={() => sendConfirm(confirmRequest.id, false)}
+      />
 
-      {/* Disconnection banner */}
+      {/* Connection banner */}
       {!connected && (
-        <div className="conn-banner">⚡ Connecting to Dela…</div>
+        <div className="conn-banner">Connecting to Dela...</div>
       )}
     </div>
   )
