@@ -18,6 +18,8 @@ import { TasksPanel }           from './components/panels/TasksPanel'
 import { SecurityPanel }        from './components/panels/SecurityPanel'
 import { SettingsPanel }        from './components/panels/SettingsPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
+import { useVoiceRecorder }     from './hooks/useVoiceRecorder'
+import { useVoiceTTS }          from './hooks/useVoiceTTS'
 import { applyTheme, getCurrentTheme, THEMES } from './themes'
 
 const ACCENT_RGB = {
@@ -41,10 +43,10 @@ Object.assign(ACCENT_RGB, {
 })
 
 const IDLE_STATS = [
-  { label: 'NEURAL CORES', value: '5', sub: 'online', pos: { left: '9%', top: '27%' } },
-  { label: 'MEMORY POOL', value: '44', sub: 'tools', pos: { right: '9%', top: '27%' } },
-  { label: 'UPLINK', value: 'SECURE', pos: { left: '11%', top: '60%' } },
-  { label: 'AGENTS', value: '5', sub: 'ready', pos: { right: '11%', top: '60%' } },
+  { label: 'NEURAL CORES', value: '5', sub: 'online', pos: { left: '9%', top: '27%' }, key: 'cores' },
+  { label: 'MEMORY POOL', value: '44', sub: 'tools', pos: { right: '9%', top: '27%' }, key: 'tools' },
+  { label: 'UPLINK', value: 'SECURE', pos: { left: '11%', top: '60%' }, key: 'uplink' },
+  { label: 'AGENTS', value: '5', sub: 'ready', pos: { right: '11%', top: '60%' }, key: 'agents' },
 ]
 
 export default function App() {
@@ -65,10 +67,57 @@ export default function App() {
   const [localPanel, setLocalPanel] = useState(null)
   const zRef = useRef(1)
 
+  // Live idle stats
+  const [uplink, setUplink] = useState(null)
+  const [agentInfo, setAgentInfo] = useState({ count: 5, ready: 5 })
+  const [toolCount, setToolCount] = useState(46)
+  const [voiceEnabled, setVoiceEnabled] = useState(false)
+
+  // Voice
+  const { recording, transcribing, error: voiceError, toggle: toggleVoice } = useVoiceRecorder()
+  const { speaking: ttsSpeaking, speak: ttsSpeak, stop: ttsStop } = useVoiceTTS()
+
   // Initialize theme on mount
   useEffect(() => {
     applyTheme(getCurrentTheme())
   }, [])
+
+  // Fetch uplink status + agent/tool counts on mount and periodically
+  const fetchUplink = useCallback(() => {
+    fetch('/api/uplink')
+      .then(r => r.json())
+      .then(data => setUplink(data))
+      .catch(() => setUplink({ status: 'unreachable' }))
+  }, [])
+
+  const fetchAgentInfo = useCallback(() => {
+    fetch('/api/agents')
+      .then(r => r.json())
+      .then(data => {
+        const agents = data || []
+        const ready = agents.filter(a => a.status === 'ready').length
+        setAgentInfo({ count: agents.length, ready, agents })
+      })
+      .catch(() => {})
+  }, [])
+
+  const fetchToolCount = useCallback(() => {
+    fetch('/api/tools')
+      .then(r => r.json())
+      .then(data => setToolCount(data?.length || 46))
+      .catch(() => {})
+  }, [])
+
+  useEffect(() => {
+    fetchUplink()
+    fetchAgentInfo()
+    fetchToolCount()
+    const interval = setInterval(() => {
+      fetchUplink()
+      fetchAgentInfo()
+    }, 15000)
+    return () => clearInterval(interval)
+  }, [fetchUplink, fetchAgentInfo, fetchToolCount])
 
   // Update CSS accent variables when state changes
   useEffect(() => {
@@ -132,6 +181,35 @@ export default function App() {
     }
   }
 
+  const handleVoiceToggle = async () => {
+    const text = await toggleVoice()
+    if (text && text.trim()) {
+      setInput(text.trim())
+      // Auto-send after voice transcription
+      sendMessage(text.trim())
+      setInput('')
+    }
+  }
+
+  // TTS: speak Dela's reply when it completes (only if voice enabled)
+  const lastReplyRef = useRef('')
+  useEffect(() => {
+    if (voiceEnabled && orbState === 'idle' && conversation.length > 0) {
+      const lastMsg = conversation[conversation.length - 1]
+      if (lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content !== lastReplyRef.current) {
+        lastReplyRef.current = lastMsg.content
+        ttsSpeak(lastMsg.content)
+      }
+    }
+  }, [orbState, conversation, voiceEnabled, ttsSpeak])
+
+  // Stop TTS when state changes to thinking (barge-in)
+  useEffect(() => {
+    if (orbState === 'thinking' && ttsSpeaking) {
+      ttsStop()
+    }
+  }, [orbState, ttsSpeaking, ttsStop])
+
   const isIdle = orbState === 'idle'
   const isSpeaking = orbState === 'speaking'
   const caption = currentStream || (toolStatus || '')
@@ -175,15 +253,44 @@ export default function App() {
       {/* Idle view */}
       {isIdle && (
         <div className="idle-view">
-          {IDLE_STATS.map((s, i) => (
-            <div key={i} className="idle-corner-stat" style={s.pos}>
-              <div className="label">{s.label}</div>
-              <div className="value">
-                {s.value}
-                {s.sub && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}> {s.sub}</span>}
+          {IDLE_STATS.map((s, i) => {
+            let value = s.value, sub = s.sub, statColor = null
+            if (s.key === 'uplink' && uplink) {
+              if (uplink.status === 'connected') {
+                value = 'LINKED'
+                sub = uplink.model || ''
+                statColor = 'var(--green)'
+              } else if (uplink.status === 'auth_error') {
+                value = 'AUTH FAIL'
+                sub = 'check API key'
+                statColor = 'var(--red)'
+              } else {
+                value = 'OFFLINE'
+                sub = 'no connection'
+                statColor = 'var(--amber)'
+              }
+            } else if (s.key === 'agents') {
+              value = String(agentInfo.count)
+              sub = agentInfo.ready === agentInfo.count ? 'ready' : `${agentInfo.ready} ready`
+              statColor = agentInfo.ready === agentInfo.count ? 'var(--green)' : 'var(--amber)'
+            } else if (s.key === 'tools') {
+              value = String(toolCount)
+            }
+            return (
+              <div key={i} className="idle-corner-stat" style={s.pos}>
+                <div className="label">{s.label}</div>
+                <div className="value" style={statColor ? { color: statColor } : undefined}>
+                  {value}
+                  {sub && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}> {sub}</span>}
+                </div>
+                {s.key === 'uplink' && uplink && uplink.latency_ms != null && (
+                  <div style={{ font: "500 9px 'JetBrains Mono', monospace", color: 'var(--text-dim)', marginTop: 2 }}>
+                    {uplink.latency_ms}ms · {uplink.profile}
+                  </div>
+                )}
               </div>
-            </div>
-          ))}
+            )
+          })}
           <div className="idle-center">
             <div>
               <div className="idle-logo">DELA</div>
@@ -199,19 +306,41 @@ export default function App() {
                 placeholder="Issue a directive — natural language or /command..."
                 autoFocus
               />
+              <button
+                className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
+                onClick={handleVoiceToggle}
+                title={recording ? 'Stop and transcribe' : 'Start voice input'}
+              >
+                {transcribing ? '...' : recording ? 'STOP' : 'MIC'}
+              </button>
               <button className="execute-btn" onClick={handleSend}>EXECUTE</button>
             </div>
+            {voiceError && (
+              <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)' }}>
+                Voice error: {voiceError}
+              </div>
+            )}
             <div className="chip-row">
               <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
               <button className="chip" onClick={() => { sendMessage('Search your state for Bruce'); setInput('') }}>Search memory</button>
               <button className="chip" onClick={() => openLocalPanel('state')}>Browse state</button>
+              <button
+                className={`chip ${voiceEnabled ? 'active' : ''}`}
+                onClick={() => {
+                  const next = !voiceEnabled
+                  setVoiceEnabled(next)
+                  if (!next) ttsStop()
+                }}
+              >
+                {voiceEnabled ? 'VOICE ON' : 'VOICE OFF'}
+              </button>
             </div>
           </div>
         </div>
       )}
 
       {/* Voice HUD */}
-      <VoiceHud speaking={isSpeaking} caption={caption} />
+      <VoiceHud speaking={isSpeaking || ttsSpeaking} caption={caption} recording={recording} transcribing={transcribing} />
 
       {/* Conversation overlay (when not idle) */}
       {!isIdle && (conversation.length > 0 || currentStream || toolStatus) && (

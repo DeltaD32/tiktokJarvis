@@ -23,9 +23,22 @@ def _optional(name: str, default: str) -> str:
     return os.getenv(name, default)
 
 
-BASE_URL = _require("DELA_BASE_URL")
-API_KEY = _require("DELA_API_KEY")
-MODEL = _require("DELA_MODEL")
+# Profile-specific API config.
+# Each profile can have its own base_url, api_key, and model.
+# Falls back to the generic DELA_* vars if profile-specific ones aren't set.
+_PROFILE = _optional("DELA_PROFILE", "personal").lower()
+
+def _profile_env(suffix: str, generic_key: str, default: str | None = None) -> str:
+    """Get a profile-specific env var, falling back to the generic one."""
+    profile_key = f"DELA_{_PROFILE.upper()}_{suffix}"
+    val = os.getenv(profile_key)
+    if val and val != "replace-me":
+        return val
+    return _require(generic_key, default)
+
+BASE_URL = _profile_env("BASE_URL", "DELA_BASE_URL")
+API_KEY = _profile_env("API_KEY", "DELA_API_KEY")
+MODEL = _profile_env("MODEL", "DELA_MODEL")
 
 NAME = _optional("DELA_NAME", "Dela")
 

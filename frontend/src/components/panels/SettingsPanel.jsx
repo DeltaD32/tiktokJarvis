@@ -211,10 +211,32 @@ export function SettingsPanel({ onClose, message }) {
               {profileMsg}
             </div>
           )}
-          <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
-            <strong style={{ color: 'var(--text-2)' }}>Personal:</strong> Full tool access, standard security, localhost-only. For solo use.<br/>
-            <strong style={{ color: 'var(--text-2)' }}>Work:</strong> Restricted tools, maximum injection defense, WIZ integration, verbose audit, approved origins only. For enterprise environments.<br/>
-            <span style={{ color: 'var(--amber)' }}>Switching profiles requires a restart.</span>
+          {/* Profile-specific API connection */}
+          <div style={{ marginTop: 16, fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-dim)', marginBottom: 10, fontFamily: "'JetBrains Mono', monospace" }}>
+            API CONNECTION — {settings.profile?.current?.toUpperCase()}
+          </div>
+          <div style={{ padding: 14, borderRadius: 12, border: '1px solid var(--border)', background: 'rgba(0,0,0,0.2)', marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <span style={{ font: "600 11px 'JetBrains Mono', monospace", color: 'var(--text-2)' }}>
+                {settings.model?.model || '—'}
+              </span>
+              <span style={{ font: "500 10px 'JetBrains Mono', monospace", color: 'var(--text-dim)' }}>
+                {settings.model?.base_url || ''}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--text-3)', marginBottom: 8 }}>
+              Set profile-specific API credentials in .env (requires restart):
+            </div>
+            <div style={{ font: "500 10px 'JetBrains Mono', monospace", color: 'var(--text-dim)', lineHeight: 1.8 }}>
+              <div>DELA_{settings.profile?.current?.toUpperCase()}_BASE_URL</div>
+              <div>DELA_{settings.profile?.current?.toUpperCase()}_API_KEY</div>
+              <div>DELA_{settings.profile?.current?.toUpperCase()}_MODEL</div>
+            </div>
+          </div>
+          <div style={{ padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--text-2)' }}>Personal:</strong> Full tool access, standard security, localhost-only. Use GLM-5.2 at home.<br/>
+            <strong style={{ color: 'var(--text-2)' }}>Work:</strong> Restricted tools, maximum injection defense, WIZ integration, verbose audit. Use Sonnet/GPT at work.<br/>
+            <span style={{ color: 'var(--amber)' }}>Switching profiles or API config requires a restart.</span>
           </div>
         </>
       )}

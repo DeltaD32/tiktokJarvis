@@ -16,7 +16,7 @@ import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
@@ -176,12 +176,20 @@ def api_get_tools():
 @app.get("/api/agents")
 def api_get_agents():
     from dela.agents import list_agents
+    from dela.agent_status import all_status, init_agents
+    # Initialize status for all registered agents (sets them to "ready")
+    init_agents([a.name for a in list_agents()])
+    statuses = all_status()
     return [
         {
             "name": a.name,
             "description": a.description,
             "tool_count": len(a.tool_whitelist) if a.tool_whitelist else "all",
             "tools": sorted(a.tool_whitelist) if a.tool_whitelist else None,
+            "status": statuses.get(a.name, {}).get("state", "ready"),
+            "last_task": statuses.get(a.name, {}).get("last_task", ""),
+            "last_dispatch_ago_s": statuses.get(a.name, {}).get("last_dispatch_ago_s"),
+            "dispatch_count": statuses.get(a.name, {}).get("dispatch_count", 0),
         }
         for a in list_agents()
     ]
@@ -193,6 +201,119 @@ def api_status():
         "cost": audit.cost_summary(),
         "notice_count": len(noticeboard.active()),
     }
+
+
+@app.get("/api/uplink")
+def api_uplink():
+    """Check API connection + auth status for the active profile."""
+    import time
+    from dela import config
+    from dela.profiles import get_current_profile_name
+
+    client = None
+    try:
+        from openai import OpenAI
+        client = OpenAI(base_url=config.BASE_URL, api_key=config.API_KEY, timeout=10)
+    except Exception as e:
+        return {
+            "status": "error",
+            "profile": get_current_profile_name(),
+            "model": config.MODEL,
+            "base_url": config.BASE_URL,
+            "error": str(e)[:200],
+            "latency_ms": 0,
+        }
+
+    t0 = time.time()
+    try:
+        # Lightweight call: list models (works on all OpenAI-compatible endpoints)
+        client.models.list()
+        latency = round((time.time() - t0) * 1000)
+        return {
+            "status": "connected",
+            "profile": get_current_profile_name(),
+            "model": config.MODEL,
+            "base_url": config.BASE_URL,
+            "latency_ms": latency,
+        }
+    except Exception as e:
+        latency = round((time.time() - t0) * 1000)
+        err_str = str(e)
+        if "401" in err_str or "auth" in err_str.lower() or "api key" in err_str.lower():
+            status = "auth_error"
+        elif "connection" in err_str.lower() or "timeout" in err_str.lower() or "unreachable" in err_str.lower():
+            status = "unreachable"
+        else:
+            status = "error"
+        return {
+            "status": status,
+            "profile": get_current_profile_name(),
+            "model": config.MODEL,
+            "base_url": config.BASE_URL,
+            "error": err_str[:200],
+            "latency_ms": latency,
+        }
+
+
+# ── Voice endpoints (web STT/TTS) ─────────────────────────────────────────────
+
+@app.post("/api/voice/stt")
+async def api_voice_stt(request: Request):
+    """Receive audio from the browser, transcribe with faster-whisper."""
+    from dela.stt import transcribe, wav_to_pcm, STTError
+
+    file = await request.body()
+    if not file:
+        return {"text": "", "ok": False, "error": "No audio data received."}
+
+    # Try to parse as WAV first; if that fails, try ffmpeg conversion
+    try:
+        pcm = wav_to_pcm(file)
+    except Exception:
+        # Not a WAV — try ffmpeg to convert webm/opus to wav
+        import subprocess, tempfile, os
+        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+            tmp_in.write(file)
+            tmp_in_path = tmp_in.name
+        tmp_out_path = tmp_in_path.replace(".webm", ".wav")
+        try:
+            subprocess.run(
+                ["ffmpeg", "-i", tmp_in_path, "-ar", "16000", "-ac", "1", "-f", "wav", tmp_out_path],
+                capture_output=True, timeout=10,
+            )
+            with open(tmp_out_path, "rb") as f:
+                wav_bytes = f.read()
+            pcm = wav_to_pcm(wav_bytes)
+        except FileNotFoundError:
+            return {"text": "", "ok": False, "error": "Audio is not WAV and ffmpeg is not installed."}
+        finally:
+            for p in (tmp_in_path, tmp_out_path):
+                try: os.unlink(p)
+                except: pass
+
+    try:
+        text = transcribe(pcm)
+        return {"text": text, "ok": True}
+    except STTError as e:
+        return {"text": "", "ok": False, "error": str(e)}
+
+
+@app.post("/api/voice/tts")
+async def api_voice_tts(body: dict):
+    """Synthesize text to WAV audio for browser playback."""
+    from dela.tts import synthesize_wav, TTSError
+
+    text = body.get("text", "")
+    if not text.strip():
+        return {"ok": False, "error": "No text provided."}
+
+    try:
+        wav_bytes = synthesize_wav(text)
+        if not wav_bytes:
+            return {"ok": False, "error": "Synthesis produced no audio."}
+        return Response(content=wav_bytes, media_type="audio/wav")
+    except TTSError as e:
+        return {"ok": False, "error": str(e)}
 
 
 # ── State Browser endpoints ───────────────────────────────────────────────────

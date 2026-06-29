@@ -63,14 +63,23 @@ def dispatch_subagent(args: dict) -> str:
     from dela.routing_cache import record as _record_route
     _record_route(task, agent_name, target_type="agent")
 
+    # Track agent status
+    from dela.agent_status import mark_busy, mark_ready, mark_error
+    mark_busy(agent_name, task)
+
     prompt = soul.build_prompt()
-    result = run_subagent(
-        agent_name=agent_name,
-        task=task,
-        system_prompt_text=prompt,
-        tool_whitelist=soul.tool_whitelist,
-    )
-    return f"[Sub-agent '{agent_name}' result]:\n{result}"
+    try:
+        result = run_subagent(
+            agent_name=agent_name,
+            task=task,
+            system_prompt_text=prompt,
+            tool_whitelist=soul.tool_whitelist,
+        )
+        mark_ready(agent_name)
+        return f"[Sub-agent '{agent_name}' result]:\n{result}"
+    except Exception as e:
+        mark_error(agent_name, str(e))
+        raise
 
 
 @register(

@@ -9,8 +9,10 @@ on first use and cached thereafter.
 
 from __future__ import annotations
 
+import io
 import threading
 import urllib.request
+import wave
 from pathlib import Path
 
 import numpy as np
@@ -98,5 +100,42 @@ def speak(text: str, stop_event: threading.Event | None = None) -> None:
             if stream is not None:
                 stream.stop()
                 stream.close()
+    except Exception as e:
+        raise TTSError(f"Piper synthesis failed: {e}") from e
+
+
+def synthesize_wav(text: str) -> bytes:
+    """Synthesize text to WAV bytes (16-bit PCM, mono) for web playback.
+
+    Unlike speak() which plays through sounddevice, this returns the audio
+    as a WAV file suitable for HTTP response / browser playback.
+    """
+    if not text.strip():
+        return b""
+
+    try:
+        voice = _piper()
+        all_audio: list[np.ndarray] = []
+        sample_rate = 22050  # piper default, updated from first chunk
+
+        for chunk in voice.synthesize(text):
+            sample_rate = chunk.sample_rate
+            audio_int16 = (chunk.audio_float_array * 32767).astype(np.int16)
+            all_audio.append(audio_int16)
+
+        if not all_audio:
+            return b""
+
+        combined = np.concatenate(all_audio)
+
+        # Write to WAV in memory
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as wav:
+            wav.setnchannels(1)
+            wav.setsampwidth(2)  # 16-bit
+            wav.setframerate(sample_rate)
+            wav.writeframes(combined.tobytes())
+        return buf.getvalue()
+
     except Exception as e:
         raise TTSError(f"Piper synthesis failed: {e}") from e

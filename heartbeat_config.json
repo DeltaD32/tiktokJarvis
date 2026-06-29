@@ -36,5 +36,6 @@
       "interval_seconds": 3600,
       "surface_on": "critical"
     }
-  }
+  },
+  "interval": 60
 }
