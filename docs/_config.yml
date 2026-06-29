@@ -1,0 +1,57 @@
+title: Dela — Voice-First AI Assistant
+description: Documentation for Dela, a voice-first AI assistant with tools, memory, multi-agent orchestration, and a holographic web UI.
+remote_theme: just-the-docs/just-the-docs@v4
+url: ""
+
+aux_links:
+  "GitHub": "https://github.com/DeltaD32/tiktokJarvis"
+
+color_scheme: dark
+
+navigation:
+  - title: Getting Started
+    url: getting-started
+  - title: Architecture
+    url: architecture
+  - title: Configuration
+    url: configuration
+  - title: Tools
+    url: tools
+  - title: Voice
+    url: voice
+  - title: Agents & Orchestration
+    url: agents
+  - title: Workflows
+    url: workflows
+  - title: Security
+    url: security
+  - title: Frontend
+    url: frontend
+  - title: API Reference
+    url: api-reference
+  - title: State & Audit
+    url: state-and-audit
+  - title: Roadmap
+    url: roadmap
+
+search_enabled: true
+search:
+  heading_level: 2
+  previews: 2
+  preview_words_before: 3
+  preview_words_after: 3
+  tokenizer_separator: /[\s/]+/
+  rel_url: true
+  button: false
+
+heading_anchors: true
+
+callouts:
+  highlight:
+    color: yellow
+  important:
+    color: red
+  note:
+    color: blue
+  tip:
+    color: green
