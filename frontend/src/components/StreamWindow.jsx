@@ -1,6 +1,6 @@
 import { FloatWindow } from './FloatWindow'
 
-export function StreamWindow({ panel, onClose, onFocus, onDragMove, conversation, currentStream, toolStatus, systemState, userInput }) {
+export function StreamWindow({ panel, onClose, onFocus, onDragMove, conversation, currentStream, toolStatus, systemState }) {
   const recent = conversation.slice(-20)
   const nodeDot = (type) => ({
     user: 'var(--cyan)',

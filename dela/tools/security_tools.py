@@ -55,3 +55,26 @@ def get_security_status_tool(args: dict) -> str:
         for f in criticals:
             lines.append(f"  [{f['category']}] {f['title']}: {f['detail']}")
     return "\n".join(lines)
+
+
+@register(
+    name="refresh_vuln_kb",
+    description=(
+        "Refresh the vulnerability knowledge base by fetching fresh checklists "
+        "from authoritative sources (OWASP, CWE/MITRE, CISA). Only connects to "
+        "whitelisted domains over HTTPS. Updates the local cache used by the "
+        "security scanner. Use when the user asks to update security checklists "
+        "or sync vulnerability data."
+    ),
+    parameters={"type": "object", "properties": {}},
+)
+def refresh_vuln_kb_tool(args: dict) -> str:
+    from dela.vuln_kb import refresh
+    result = refresh()
+    lines = [
+        f"Vuln KB Refresh — Status: {result['status'].upper()}",
+        f"Checklist items: {result['fetched_count']}",
+    ]
+    if result.get("errors"):
+        lines.append(f"Errors: {'; '.join(result['errors'])}")
+    return "\n".join(lines)

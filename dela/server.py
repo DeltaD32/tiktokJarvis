@@ -362,6 +362,16 @@ def api_security_scan():
     from dela.security import run_full_scan
     return run_full_scan()
 
+@app.get("/api/vuln-kb")
+def api_vuln_kb():
+    from dela.vuln_kb import get_kb_info
+    return get_kb_info()
+
+@app.post("/api/vuln-kb/refresh")
+def api_vuln_kb_refresh():
+    from dela.vuln_kb import refresh
+    return refresh()
+
 
 # ── Settings endpoints ────────────────────────────────────────────────────────
 

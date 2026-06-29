@@ -26,7 +26,7 @@ function getThemeColors() {
   }
 }
 
-export function ParticleCanvas({ state, speaking, muted }) {
+export function ParticleCanvas({ state, speaking }) {
   const canvasRef = useRef(null)
   const stateRef = useRef(state)
   const speakingRef = useRef(speaking)

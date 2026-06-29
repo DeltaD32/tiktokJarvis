@@ -1064,3 +1064,53 @@ textarea.chat-input::placeholder, input.chat-input::placeholder { color: var(--t
   transition: all 0.2s;
 }
 .data-btn:hover { border-color: var(--border-hover); color: var(--text); }
+
+/* Agent roster (idle view) */
+.agent-roster {
+  margin-top: 18px;
+  width: 100%;
+  max-width: 520px;
+}
+.agent-roster-label {
+  font: 600 8px 'JetBrains Mono', monospace;
+  letter-spacing: 0.2em;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+  text-align: center;
+}
+.agent-roster-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+.agent-roster-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid var(--border);
+  font: 500 9px 'JetBrains Mono', monospace;
+  color: var(--text-3);
+  transition: all 0.2s;
+}
+.agent-roster-item:hover {
+  border-color: var(--border-hover);
+  color: var(--text);
+}
+.agent-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.agent-dot-ready { background: var(--green); box-shadow: 0 0 4px var(--green); }
+.agent-dot-busy  { background: var(--amber); box-shadow: 0 0 4px var(--amber); animation: jblink 1.2s steps(1) infinite; }
+.agent-dot-error { background: var(--red); box-shadow: 0 0 4px var(--red); }
+.agent-dispatch-count {
+  font-size: 8px;
+  color: var(--text-dim);
+  margin-left: 2px;
+}

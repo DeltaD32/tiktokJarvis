@@ -42,7 +42,7 @@ Built tier by tier: each layer is independently testable, and the discipline is 
 | Capability | Status |
 |---|---|
 | Hold a text conversation with in-session memory | Done |
-| Call tools mid-conversation (46 tools across 18 modules) | Done |
+| Call tools mid-conversation (47 tools across 18 modules) | Done |
 | Talk to you by voice — push-to-talk or open-mic duplex with barge-in | Done |
 | Voice I/O through the web UI — mic button + TTS playback | Done |
 | Remember durable facts about you across restarts | Done |
@@ -178,7 +178,7 @@ Dela is built as concentric layers, each wrapping the last. The core discipline:
               ┌─────────┼─────────┐
               │         │         │
          ┌────▼───┐ ┌──▼────┐ ┌─▼──────┐
-         │ Project│ │Research│ │Systems │  ... (+ 46 tools,
+         │ Project│ │Research│ │Systems │  ... (+ 47 tools,
          │ (tasks)│ │(fetch) │ │(check) │      5 sub-agents,
          └────────┘ └───────┘ └────────┘      3 skills)
 ```
@@ -214,7 +214,7 @@ A text conversation loop: read input → append to history → send to model →
 
 ### Tier 2 — The Hands (Tools)
 
-A tool registry where each tool has a name, a description (written for the model), typed JSON-schema inputs, and a `requires_confirmation` flag. 46 tools across 18 modules.
+A tool registry where each tool has a name, a description (written for the model), typed JSON-schema inputs, and a `requires_confirmation` flag. 47 tools across 18 modules.
 
 - **Registry:** `dela/tools/__init__.py` — `Tool` dataclass, `Registry` class, `@register` decorator
 - **Tools:** see [Tool Registry](#tool-registry) below
@@ -436,12 +436,12 @@ The home screen shows live data in the corners surrounding the particle galaxy:
 
 | Stat | Source | Shows |
 |---|---|---|
-| **NEURAL CORES** | Static | 5 online |
-| **MEMORY POOL** | `/api/tools` | Live tool count |
+| **HEARTBEAT** | WebSocket | `ACTIVE` (green) / `PAUSED` (gray) — live from WS |
+| **TOOLS** | `/api/tools` | Live tool count |
 | **UPLINK** | `/api/uplink` | `LINKED` (green) / `AUTH FAIL` (red) / `OFFLINE` (amber) + model name, latency, profile |
-| **AGENTS** | `/api/agents` | Live count + ready count |
+| **AGENTS** | `/api/agents` | Live count + ready count + **agent roster** (each agent name with status dot + dispatch count) |
 
-Stats auto-refresh every 15 seconds. The UPLINK stat does a real API connection check (calls `models.list()`) and reports auth status and latency.
+Stats auto-refresh every 15 seconds. The UPLINK stat does a real API connection check (calls `models.list()`) and reports auth status and latency. The agent roster shows each agent with a colored status dot (green=ready, amber=busy, red=error) and dispatch count.
 
 ### Voice Input (Home)
 
@@ -519,7 +519,7 @@ Opened via buttons in the top-right:
 
 ## Tool Registry
 
-46 tools across 18 modules. Each tool is a self-contained function decorated with `@register(...)`.
+47 tools across 18 modules. Each tool is a self-contained function decorated with `@register(...)`.
 
 ### Adding a New Tool
 
@@ -694,7 +694,7 @@ Profile-aware — two levels:
 
 ## Security Audit System
 
-Dela can audit its own security posture. 8 check categories, scored 0-100.
+Dela can audit its own security posture. 9 check categories (including vulnerability KB), scored 0-100.
 
 ### Check Categories
 
@@ -708,6 +708,19 @@ Dela can audit its own security posture. 8 check categories, scored 0-100.
 | **Sandbox** | Code execution sandboxed (Docker or subprocess) |
 | **File perms** | State files not world-readable |
 | **Deps** | No known-vulnerable dependencies |
+| **Vuln KB** | OWASP LLM Top 10 + CWE Top 25 checklist checks (12 checks) |
+
+### Vulnerability Knowledge Base
+
+The security scanner uses an authoritative checklist from:
+
+1. **OWASP Top 10 for LLM Applications 2025** — 10 LLM-specific risks (prompt injection, sensitive info, supply chain, data poisoning, output handling, excessive agency, prompt leakage, vector weaknesses, misinformation, unbounded consumption)
+2. **CWE Top 25 (2025)** — 10 Python-relevant general software weaknesses (command injection, path traversal, code injection, deserialization, info exposure, missing auth, resource limits, SSRF, injection, CSRF)
+
+The checklist is embedded (works offline) and can be refreshed from whitelisted domains:
+- `genai.owasp.org`, `owasp.org`, `cwe.mitre.org`, `cisa.gov`, `raw.githubusercontent.com`
+
+The Security panel has a **CHECKLIST** tab showing each item with description, remediation, and scan status (ok/warning/info/pending).
 
 ### Scoring
 
@@ -716,10 +729,11 @@ Dela can audit its own security posture. 8 check categories, scored 0-100.
 
 ### Files
 
-- `dela/security.py` — audit engine
-- `dela/tools/security_tools.py` — `run_security_scan`, `get_security_status` tools
+- `dela/security.py` — audit engine (9 categories including vuln KB checks)
+- `dela/vuln_kb.py` — vulnerability knowledge base (OWASP LLM Top 10 + CWE Top 25)
+- `dela/tools/security_tools.py` — `run_security_scan`, `get_security_status`, `refresh_vuln_kb` tools
 - `dela/checks.py` — `security_scan` heartbeat check (runs hourly)
-- `frontend/src/components/panels/SecurityPanel.jsx` — UI with score gauge + findings
+- `frontend/src/components/panels/SecurityPanel.jsx` — UI with FINDINGS + CHECKLIST tabs
 
 ### REST Endpoints
 
@@ -727,6 +741,8 @@ Dela can audit its own security posture. 8 check categories, scored 0-100.
 |---|---|---|
 | `/api/security` | GET | Last scan results |
 | `/api/security/scan` | POST | Run a new scan |
+| `/api/vuln-kb` | GET | Vulnerability KB checklist + metadata |
+| `/api/vuln-kb/refresh` | POST | Fetch fresh checklist from whitelisted sources |
 
 ---
 
@@ -796,7 +812,8 @@ tiktokJarvis/
 │   ├── config.py               # Env loading, profile-specific API config
 │   ├── live_config.py          # Hot-reloadable settings layer
 │   ├── profiles.py             # Personal + work profile definitions
-│   ├── security.py             # Security self-audit engine
+│   ├── security.py             # Security self-audit engine (9 categories)
+│   ├── vuln_kb.py              # Vulnerability knowledge base (OWASP LLM + CWE Top 25)
 │   ├── agent_status.py         # Agent ready/busy/error tracker
 │   ├── gate.py                 # Confirmation gate
 │   ├── audit.py                # Audit trail + cost tally
@@ -834,7 +851,7 @@ tiktokJarvis/
 │   │   ├── workflow_designer.py
 │   │   └── system_expert.py
 │   │
-│   ├── tools/                  # 46 tools across 18 modules
+│   ├── tools/                  # 47 tools across 18 modules
 │   │   ├── __init__.py         # Registry + @register
 │   │   ├── project.py          # Task management
 │   │   ├── research.py         # Web fetch
@@ -916,6 +933,7 @@ Each sub-agent's status is tracked in real time:
 - `dispatch_subagent` marks busy before run, ready/error after
 - `/api/agents` returns live status + dispatch count + last task
 - HiveWindow polls every 3s and shows colored badges
+- Idle view shows agent roster — each agent name with status dot (green/amber/red) and dispatch count
 
 ### Agent Self-Learning Memory
 
@@ -979,7 +997,7 @@ Builds `.pptx` files from a storyline using a stored style. Layout types: `bulle
 
 ## Complete Tool Reference
 
-Dela has **46 tools** across 18 modules:
+Dela has **47 tools** across 18 modules:
 
 ### Core Tools
 | Tool | Module | Confirmation |
@@ -1050,6 +1068,7 @@ Dela has **46 tools** across 18 modules:
 |---|---|---|
 | `run_security_scan` | security_tools | No |
 | `get_security_status` | security_tools | No |
+| `refresh_vuln_kb` | security_tools | No |
 
 ### Routing Cache Tools
 | Tool | Module | Confirmation |
@@ -1074,7 +1093,7 @@ MCP server tools are dynamically loaded from configured MCP servers. They appear
 
 ## REST API Reference
 
-The FastAPI server (`dela/server.py`) exposes 32 REST endpoints + 1 WebSocket:
+The FastAPI server (`dela/server.py`) exposes 34 REST endpoints + 1 WebSocket:
 
 ### Conversation & State
 | Endpoint | Method | Description |
@@ -1112,7 +1131,7 @@ The FastAPI server (`dela/server.py`) exposes 32 REST endpoints + 1 WebSocket:
 ### Tools & Agents
 | Endpoint | Method | Description |
 |---|---|---|
-| `/api/tools` | GET | List all 46 tools |
+| `/api/tools` | GET | List all 47 tools |
 | `/api/agents` | GET | List all 5 agents with live status |
 
 ### State Browser
@@ -1129,6 +1148,8 @@ The FastAPI server (`dela/server.py`) exposes 32 REST endpoints + 1 WebSocket:
 |---|---|---|
 | `/api/security` | GET | Last scan results |
 | `/api/security/scan` | POST | Run a new security scan |
+| `/api/vuln-kb` | GET | Vulnerability KB checklist + metadata |
+| `/api/vuln-kb/refresh` | POST | Fetch fresh checklist from whitelisted sources |
 
 ### Settings
 | Endpoint | Method | Description |

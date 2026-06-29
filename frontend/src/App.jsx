@@ -345,6 +345,22 @@ export default function App() {
                 {voiceEnabled ? 'VOICE ON' : 'VOICE OFF'}
               </button>
             </div>
+            {agentInfo.agents && agentInfo.agents.length > 0 && (
+              <div className="agent-roster">
+                <div className="agent-roster-label">AGENT ROSTER</div>
+                <div className="agent-roster-grid">
+                  {agentInfo.agents.map(a => (
+                    <div key={a.name} className="agent-roster-item" title={a.description || ''}>
+                      <span className={`agent-dot agent-dot-${a.status}`} />
+                      <span className="agent-name">{a.name}</span>
+                      {a.dispatch_count > 0 && (
+                        <span className="agent-dispatch-count">{a.dispatch_count}</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

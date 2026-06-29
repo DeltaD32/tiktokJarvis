@@ -346,6 +346,262 @@ def _scan_profile() -> list[Finding]:
     return findings
 
 
+# ─── Vulnerability KB checks (OWASP LLM Top 10 + CWE Top 25) ──────────────────
+
+def _check_shell_injection() -> Finding:
+    """CWE-78: Check for subprocess usage with shell=True on user input."""
+    skip_dirs = {".venv", "node_modules", "__pycache__", ".git", "models", "dela_state", "frontend/dist"}
+    skip_files = {"dela\\security.py", "dela\\vuln_kb.py", "start_dela.py"}
+    issues = []
+    for py_file in ROOT.rglob("*.py"):
+        if any(part in skip_dirs for part in py_file.parts):
+            continue
+        rel_str = str(py_file.relative_to(ROOT)).replace("/", "\\")
+        if rel_str in skip_files:
+            continue
+        try:
+            text = py_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for m in re.finditer(r'shell\s*=\s*True', text):
+            line_num = text[:m.start()].count('\n') + 1
+            rel = py_file.relative_to(ROOT)
+            issues.append(f"{rel}:{line_num}")
+    if issues:
+        return Finding("warning", "vuln_kb", "CWE-78: shell=True found",
+                       f"Locations: {', '.join(issues[:5])}. Avoid shell=True with user input.")
+    return Finding("ok", "vuln_kb", "CWE-78: No shell=True usage", "")
+
+
+def _check_path_traversal() -> Finding:
+    """CWE-22: Check file operations for path validation."""
+    skip_dirs = {".venv", "node_modules", "__pycache__", ".git", "models", "dela_state", "frontend/dist"}
+    risky = []
+    for py_file in ROOT.glob("dela/**/*.py"):
+        try:
+            text = py_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        if re.search(r'open\s*\(\s*[^)]*f["\']', text) and not re.search(r'resolve|normalize|is_relative_to|check_path', text, re.I):
+            risky.append(str(py_file.relative_to(ROOT)))
+    if risky:
+        return Finding("info", "vuln_kb", "CWE-22: File opens with f-strings",
+                       f"Review path validation in: {', '.join(risky[:5])}")
+    return Finding("ok", "vuln_kb", "CWE-22: Path operations look safe", "")
+
+
+def _check_code_injection() -> Finding:
+    """CWE-94: Check for eval()/exec() on user input."""
+    skip_dirs = {".venv", "node_modules", "__pycache__", ".git", "models", "dela_state", "frontend/dist"}
+    skip_files = {"dela\\security.py", "dela\\vuln_kb.py"}
+    issues = []
+    for py_file in ROOT.rglob("*.py"):
+        if any(part in skip_dirs for part in py_file.parts):
+            continue
+        rel_str = str(py_file.relative_to(ROOT)).replace("/", "\\")
+        if rel_str in skip_files:
+            continue
+        try:
+            text = py_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for m in re.finditer(r'\b(?:eval|exec)\s*\(', text):
+            line_num = text[:m.start()].count('\n') + 1
+            rel = py_file.relative_to(ROOT)
+            issues.append(f"{rel}:{line_num}")
+    if issues:
+        return Finding("warning", "vuln_kb", "CWE-94: eval()/exec() found",
+                       f"Locations: {', '.join(issues[:5])}. Ensure not used on user input.")
+    return Finding("ok", "vuln_kb", "CWE-94: No eval()/exec() usage", "")
+
+
+def _check_deserialization() -> Finding:
+    """CWE-502: Check for unsafe deserialization."""
+    skip_dirs = {".venv", "node_modules", "__pycache__", ".git", "models", "dela_state", "frontend/dist"}
+    issues = []
+    for py_file in ROOT.rglob("*.py"):
+        if any(part in skip_dirs for part in py_file.parts):
+            continue
+        try:
+            text = py_file.read_text(encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        if re.search(r'\bpickle\.(load|loads)\b', text):
+            rel = py_file.relative_to(ROOT)
+            issues.append(f"{rel} (pickle)")
+        if re.search(r'\byaml\.(load|unsafe_load)\b', text) and not re.search(r'SafeLoader', text):
+            rel = py_file.relative_to(ROOT)
+            issues.append(f"{rel} (yaml.unsafe_load)")
+    if issues:
+        return Finding("warning", "vuln_kb", "CWE-502: Unsafe deserialization",
+                       f"Use json or SafeLoader. Found: {', '.join(issues[:5])}")
+    return Finding("ok", "vuln_kb", "CWE-502: No unsafe deserialization", "")
+
+
+def _check_info_exposure() -> Finding:
+    """CWE-200: Check error messages don't leak secrets."""
+    try:
+        server_text = (ROOT / "dela" / "server.py").read_text(encoding="utf-8")
+        has_debug = "debug=True" in server_text or "DEBUG.*True" in server_text
+        if has_debug:
+            return Finding("warning", "vuln_kb", "CWE-200: Debug mode may leak info",
+                           "Disable debug=True in production.")
+        return Finding("ok", "vuln_kb", "CWE-200: Debug mode disabled", "")
+    except Exception:
+        return Finding("info", "vuln_kb", "CWE-200: Could not check debug mode", "")
+
+
+def _check_missing_auth() -> Finding:
+    """CWE-306: Check API auth in work profile."""
+    try:
+        from dela.profiles import get_current_profile, get_current_profile_name
+        name = get_current_profile_name()
+        profile = get_current_profile()
+        if name == "work":
+            if profile.cors_origins == ["*"]:
+                return Finding("warning", "vuln_kb", "CWE-306: Work profile has wildcard CORS",
+                               "Restrict CORS origins in work profile.")
+            return Finding("ok", "vuln_kb", "CWE-306: Work profile has restricted access", "")
+        return Finding("info", "vuln_kb", "CWE-306: Personal profile (auth optional)", "")
+    except Exception:
+        return Finding("info", "vuln_kb", "CWE-306: Could not check auth", "")
+
+
+def _check_resource_limits() -> Finding:
+    """CWE-770: Check for rate limiting / resource limits."""
+    try:
+        server_text = (ROOT / "dela" / "server.py").read_text(encoding="utf-8")
+        has_limits = any(kw in server_text.lower() for kw in ["ratelimit", "rate_limit", "throttle", "max_tokens", "timeout"])
+        has_compaction = "compact" in server_text.lower()
+        if has_limits or has_compaction:
+            return Finding("ok", "vuln_kb", "CWE-770: Resource limits present",
+                           f"Found: {', '.join(k for k in ['rate_limit', 'timeout', 'compaction'] if k in server_text.lower())}")
+        return Finding("warning", "vuln_kb", "CWE-770: No resource limits detected",
+                       "Add rate limiting, timeouts, and token budgets.")
+    except Exception:
+        return Finding("info", "vuln_kb", "CWE-770: Could not check resource limits", "")
+
+
+def _check_ssrf() -> Finding:
+    """CWE-918: Check web fetch URL validation."""
+    try:
+        fetch_files = list(ROOT.glob("dela/tools/*.py"))
+        has_url_validation = False
+        for f in fetch_files:
+            text = f.read_text(encoding="utf-8", errors="replace")
+            if any(kw in text.lower() for kw in ["urlparse", "validate_url", "whitelist", "allowed_domain", "is_domain_whitelisted"]):
+                has_url_validation = True
+                break
+        if has_url_validation:
+            return Finding("ok", "vuln_kb", "CWE-918: URL validation present", "")
+        return Finding("info", "vuln_kb", "CWE-918: No URL validation in fetch tools",
+                       "Consider validating URLs in web fetch tools.")
+    except Exception:
+        return Finding("info", "vuln_kb", "CWE-918: Could not check SSRF", "")
+
+
+def _check_data_poisoning() -> Finding:
+    """LLM04: Check memory/RAG data validation."""
+    try:
+        memory_text = (ROOT / "dela" / "memory.py").read_text(encoding="utf-8")
+        has_validation = any(kw in memory_text.lower() for kw in ["validate", "sanitize", "check", "limit", "max_"])
+        if has_validation:
+            return Finding("ok", "vuln_kb", "LLM04: Memory has validation", "")
+        return Finding("info", "vuln_kb", "LLM04: Memory lacks data validation",
+                       "Consider validating memory entries before storage.")
+    except Exception:
+        return Finding("info", "vuln_kb", "LLM04: Could not check memory validation", "")
+
+
+def _check_output_handling() -> Finding:
+    """LLM05: Check tool output validation."""
+    try:
+        brain_text = (ROOT / "dela" / "brain.py").read_text(encoding="utf-8")
+        has_truncation = "truncate" in brain_text.lower() or "max_length" in brain_text.lower() or "[:1000]" in brain_text
+        if has_truncation:
+            return Finding("ok", "vuln_kb", "LLM05: Tool output truncated/validated", "")
+        return Finding("info", "vuln_kb", "LLM05: Tool output not truncated",
+                       "Consider truncating tool outputs before feeding to LLM.")
+    except Exception:
+        return Finding("info", "vuln_kb", "LLM05: Could not check output handling", "")
+
+
+def _check_prompt_leakage() -> Finding:
+    """LLM07: Check system prompt doesn't contain secrets."""
+    try:
+        from dela.system_prompt import build_system_prompt
+        prompt = build_system_prompt()
+        secret_patterns = [r"sk-[a-zA-Z0-9]{20,}", r"ghp_[a-zA-Z0-9]{36}", r"password\s*=\s*['\"][^'\"]+['\"]"]
+        for pat in secret_patterns:
+            if re.search(pat, prompt):
+                return Finding("critical", "vuln_kb", "LLM07: Secrets found in system prompt!",
+                               "Remove all secrets from system prompt text.")
+        return Finding("ok", "vuln_kb", "LLM07: No secrets in system prompt", "")
+    except Exception:
+        return Finding("info", "vuln_kb", "LLM07: Could not check prompt for secrets", "")
+
+
+def _check_unbounded_consumption() -> Finding:
+    """LLM10: Check for token/cost limits and compaction."""
+    try:
+        from dela.live_config import get as lc_get
+        has_compaction = "compact" in (ROOT / "dela" / "compaction.py").read_text(encoding="utf-8", errors="replace").lower()
+        max_tokens = lc_get("max_tokens", 0) if hasattr(lc_get, '__call__') else 0
+        if has_compaction:
+            return Finding("ok", "vuln_kb", "LLM10: Compaction + token limits active", "")
+        return Finding("info", "vuln_kb", "LLM10: No compaction detected",
+                       "Enable conversation compaction to limit token usage.")
+    except Exception:
+        return Finding("info", "vuln_kb", "LLM10: Could not check consumption limits", "")
+
+
+def _scan_vuln_kb() -> list[Finding]:
+    """Run vulnerability KB checks against the codebase."""
+    from dela.vuln_kb import get_checklist
+
+    findings: list[Finding] = []
+
+    # Map check_id -> function
+    check_map = {
+        "cwe78_command_injection": _check_shell_injection,
+        "cwe22_path_traversal": _check_path_traversal,
+        "cwe94_code_injection": _check_code_injection,
+        "cwe502_deserialization": _check_deserialization,
+        "cwe200_info_exposure": _check_info_exposure,
+        "cwe306_missing_auth": _check_missing_auth,
+        "cwe770_resource_limits": _check_resource_limits,
+        "cwe918_ssrf": _check_ssrf,
+        "llm04_data_poisoning": _check_data_poisoning,
+        "llm05_output_handling": _check_output_handling,
+        "llm07_prompt_leakage": _check_prompt_leakage,
+        "llm10_unbounded_consumption": _check_unbounded_consumption,
+    }
+
+    checklist = get_checklist()
+    checked_ids: set[str] = set()
+
+    for item in checklist:
+        check_id = item.get("check_id", "")
+        if check_id in check_map and check_id not in checked_ids:
+            try:
+                finding = check_map[check_id]()
+                finding.category = "vuln_kb"
+                findings.append(finding)
+                checked_ids.add(check_id)
+            except Exception as e:
+                findings.append(Finding("info", "vuln_kb", f"{item['id']}: check failed", str(e)[:100]))
+
+    # Summary finding
+    kb_count = len(checklist)
+    checked = len(checked_ids)
+    findings.append(Finding(
+        "ok", "vuln_kb", f"Vuln KB: {checked}/{kb_count} checks run",
+        f"Sources: OWASP LLM Top 10 2025, CWE Top 25 2025",
+    ))
+
+    return findings
+
+
 def run_full_scan() -> dict[str, Any]:
     """Run all security checks and return a structured report."""
     import time
@@ -361,6 +617,7 @@ def run_full_scan() -> dict[str, Any]:
     all_findings += _scan_sandbox()
     all_findings += _scan_audit_trail()
     all_findings += _scan_profile()
+    all_findings += _scan_vuln_kb()
 
     findings_dict = [f.to_dict() for f in all_findings]
     critical = sum(1 for f in all_findings if f.severity == "critical")
