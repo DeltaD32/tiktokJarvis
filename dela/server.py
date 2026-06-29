@@ -25,9 +25,12 @@ from dela.brain import respond
 from dela.gate import Confirmer, set_confirmer
 from dela.tools import registry
 from dela.channels.config import is_enabled, load as load_channels_config
+from dela.profiles import get_current_profile
 
 # ── Global state (single-user local app) ─────────────────────────────────────
 _main_loop: asyncio.AbstractEventLoop | None = None
+
+_profile = get_current_profile()
 
 
 @asynccontextmanager
@@ -41,7 +44,12 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Dela", lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=_profile.cors_origins,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _clients: set[WebSocket] = set()
 _history: list[dict] = []
@@ -234,7 +242,13 @@ def api_security_scan():
 def api_get_settings():
     from dela import config, hb_config
     from dela.channels.config import load as load_channels
+    from dela.profiles import get_current_profile, list_profiles, get_current_profile_name
     return {
+        "profile": {
+            "current": get_current_profile_name(),
+            "available": list_profiles(),
+            "active_config": get_current_profile().to_dict(),
+        },
         "model": {
             "name": config.NAME,
             "model": config.MODEL,
@@ -298,6 +312,19 @@ def api_update_env_setting(body: dict):
         new_lines.append(f"{key}={value}")
     env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
     return {"ok": True, "key": key, "note": "Restart required for changes to take effect."}
+
+
+@app.put("/api/settings/profile")
+def api_switch_profile(body: dict):
+    """Switch the security profile. Requires restart."""
+    from dela.profiles import set_profile, PROFILES
+    name = body.get("profile", "")
+    if name not in PROFILES:
+        return {"ok": False, "error": f"Unknown profile: {name}. Available: {', '.join(PROFILES.keys())}"}
+    success = set_profile(name)
+    if success:
+        return {"ok": True, "profile": name, "note": "Restart required to apply the new security profile."}
+    return {"ok": False, "error": "Could not write to .env file."}
 
 
 @app.put("/api/memory/{fact_id}")

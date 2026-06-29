@@ -104,24 +104,36 @@ def _scan_gate() -> list[Finding]:
     findings: list[Finding] = []
     try:
         from dela.tools import registry
+        from dela.profiles import get_current_profile
+        profile = get_current_profile()
+
         unconfirmed = []
         confirmed = 0
+        blocked = 0
+        # Use word-boundary matching to avoid false positives like "kill" in "skills"
+        consequential_keywords = [
+            "delete", "remove", "destroy", "drop", "send", "deploy",
+            "execute", "kill", "reset", "wipe", "purge",
+        ]
         for tool in registry.all():
-            if tool.requires_confirmation:
+            if not profile.is_tool_allowed(tool.name):
+                blocked += 1
+                continue
+            effective_confirm = profile.requires_confirmation(tool.name, tool.requires_confirmation)
+            if effective_confirm:
                 confirmed += 1
             else:
-                # Check if the tool name suggests it's consequential
-                name = tool.name.lower()
-                consequential_keywords = ["delete", "remove", "destroy", "drop", "send", "deploy",
-                                          "execute", "run", "kill", "reset", "wipe", "purge"]
-                if any(kw in name for kw in consequential_keywords):
+                name_lower = tool.name.lower()
+                # Check word boundaries: split on _ and -
+                words = re.split(r'[-_]', name_lower)
+                if any(kw in words for kw in consequential_keywords):
                     unconfirmed.append(tool.name)
 
         findings.append(Finding(
             "ok" if not unconfirmed else "warning",
             "gate",
-            f"Confirmation gate: {confirmed} tools confirmed",
-            f"All consequential tools have requires_confirmation=True." if not unconfirmed
+            f"Confirmation gate: {confirmed} confirmed, {blocked} blocked by profile",
+            f"All consequential tools have confirmation gate." if not unconfirmed
             else f"Possible missing confirmation on: {', '.join(unconfirmed)}",
         ))
     except Exception as e:
@@ -228,25 +240,25 @@ def _scan_dependencies() -> list[Finding]:
 
 
 def _scan_network() -> list[Finding]:
-    """Check server network exposure."""
+    """Check server network exposure based on current profile."""
     findings: list[Finding] = []
     try:
-        server_text = (ROOT / "dela" / "server.py").read_text(encoding="utf-8")
-        binds_localhost = "127.0.0.1" in server_text or "localhost" in server_text
-        wildcard_cors = 'allow_origins=["*"]' in server_text
+        from dela.profiles import get_current_profile
+        profile = get_current_profile()
 
-        if wildcard_cors:
+        # Check CORS config
+        if profile.cors_origins == ["*"]:
             findings.append(Finding("warning", "network", "CORS allows all origins",
-                'Server uses allow_origins=["*"]. For local use this is fine; restrict for deployment.'))
+                'Profile uses allow_origins=["*"]. Acceptable for local dev; switch to work profile for restricted origins.'))
         else:
-            findings.append(Finding("ok", "network", "CORS configured", ""))
+            findings.append(Finding("ok", "network", f"CORS restricted to {len(profile.cors_origins)} origin(s)",
+                f"Allowed: {', '.join(profile.cors_origins)}"))
 
-        # Check start_dela.py binds to localhost
-        start_text = (ROOT / "start_dela.py").read_text(encoding="utf-8") if (ROOT / "start_dela.py").exists() else ""
-        if "127.0.0.1" in start_text:
+        # Check bind host
+        if profile.bind_host == "127.0.0.1":
             findings.append(Finding("ok", "network", "Server binds to localhost", "Not exposed to external networks."))
         else:
-            findings.append(Finding("info", "network", "Server bind address not verified", "Ensure uvicorn binds to 127.0.0.1 in production."))
+            findings.append(Finding("warning", "network", f"Server binds to {profile.bind_host}", "External networks can reach the server."))
     except Exception as e:
         findings.append(Finding("info", "network", "Could not check network config", str(e)[:100]))
 
@@ -299,6 +311,41 @@ def shutil_which(cmd: str) -> str | None:
     return shutil.which(cmd)
 
 
+def _scan_profile() -> list[Finding]:
+    """Check that the security profile is properly configured."""
+    findings: list[Finding] = []
+    try:
+        from dela.profiles import get_current_profile, get_current_profile_name
+        profile = get_current_profile()
+        name = get_current_profile_name()
+
+        findings.append(Finding(
+            "ok", "profile", f"Active profile: {name.upper()}",
+            profile.description,
+        ))
+
+        if profile.tools_blocked:
+            findings.append(Finding(
+                "ok", "profile", f"{len(profile.tools_blocked)} tool(s) blocked by profile",
+                f"Blocked: {', '.join(sorted(profile.tools_blocked))}",
+            ))
+
+        if profile.injection_level == "maximum":
+            findings.append(Finding("ok", "profile", "Maximum injection defense active", "8 absolute rules enforced."))
+        else:
+            findings.append(Finding("ok", "profile", "Standard injection defense active", ""))
+
+        if profile.wiz_enabled:
+            findings.append(Finding("ok", "profile", "WIZ enterprise integration enabled", "Cloud resources monitored by WIZ."))
+        else:
+            findings.append(Finding("info", "profile", "WIZ integration disabled", "Enable work profile for WIZ support."))
+
+    except Exception as e:
+        findings.append(Finding("warning", "profile", "Could not check profile", str(e)[:100]))
+
+    return findings
+
+
 def run_full_scan() -> dict[str, Any]:
     """Run all security checks and return a structured report."""
     import time
@@ -313,6 +360,7 @@ def run_full_scan() -> dict[str, Any]:
     all_findings += _scan_network()
     all_findings += _scan_sandbox()
     all_findings += _scan_audit_trail()
+    all_findings += _scan_profile()
 
     findings_dict = [f.to_dict() for f in all_findings]
     critical = sum(1 for f in all_findings if f.severity == "critical")

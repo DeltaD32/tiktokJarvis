@@ -108,6 +108,17 @@ def preflight() -> bool:
             all_ok = False
         else:
             ok(".env has all required keys")
+
+        # Show current security profile
+        profile = ""
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            if line.startswith("DELA_PROFILE="):
+                profile = line.split("=", 1)[1].strip()
+                break
+        if profile:
+            ok(f"Security profile: {profile.upper()}")
+        else:
+            info("No DELA_PROFILE set — defaulting to PERSONAL")
     else:
         fail("No .env file — copy .env.example to .env and fill in your API keys")
         all_ok = False

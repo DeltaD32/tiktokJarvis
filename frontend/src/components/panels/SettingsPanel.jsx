@@ -10,6 +10,7 @@ export function SettingsPanel({ onClose, message }) {
   const [envKey, setEnvKey]       = useState('')
   const [envValue, setEnvValue]   = useState('')
   const [envMsg, setEnvMsg]       = useState('')
+  const [profileMsg, setProfileMsg] = useState('')
 
   const refresh = () => {
     fetch('/api/settings')
@@ -23,6 +24,23 @@ export function SettingsPanel({ onClose, message }) {
   const selectTheme = (name) => {
     applyTheme(name)
     setTheme(name)
+  }
+
+  const switchProfile = (name) => {
+    fetch('/api/settings/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ profile: name }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          setProfileMsg(`Profile set to ${name.toUpperCase()}. Restart Dela to apply.`)
+          refresh()
+        } else {
+          setProfileMsg(data.error || 'Failed to switch profile.')
+        }
+      })
   }
 
   const updateHeartbeat = (key, value) => {
@@ -55,6 +73,7 @@ export function SettingsPanel({ onClose, message }) {
   }
 
   const sections = [
+    { id: 'profile',  label: 'PROFILE' },
     { id: 'general',  label: 'GENERAL' },
     { id: 'voice',    label: 'VOICE' },
     { id: 'theme',    label: 'THEME' },
@@ -91,6 +110,66 @@ export function SettingsPanel({ onClose, message }) {
       </div>
 
       {loading && <p className="panel-empty">Loading...</p>}
+
+      {/* PROFILE */}
+      {!loading && section === 'profile' && settings && (
+        <>
+          <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-dim)', marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+            SECURITY PROFILE
+          </div>
+          {settings.profile?.available.map(p => {
+            const isCurrent = p.name === settings.profile.current
+            return (
+              <div
+                key={p.name}
+                onClick={() => !isCurrent && switchProfile(p.name)}
+                style={{
+                  cursor: isCurrent ? 'default' : 'pointer',
+                  padding: 14,
+                  borderRadius: 12,
+                  border: isCurrent ? '2px solid var(--accent)' : '1px solid var(--border)',
+                  background: isCurrent ? 'rgba(var(--accent-rgb), 0.05)' : 'rgba(0,0,0,0.2)',
+                  marginBottom: 10,
+                  transition: 'all 0.2s',
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', fontFamily: "'JetBrains Mono', monospace" }}>
+                    {p.name.toUpperCase()}
+                  </span>
+                  {isCurrent && <span className="badge badge-done">ACTIVE</span>}
+                  {!isCurrent && <span className="badge badge-open">CLICK TO SWITCH</span>}
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.4 }}>
+                  {p.description}
+                </div>
+                <div style={{ display: 'flex', gap: 12, marginTop: 10, flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+                    CORS: {p.cors_origins.length === 1 && p.cors_origins[0] === '*' ? 'wildcard' : `${p.cors_origins.length} origin(s)`}
+                  </span>
+                  <span style={{ fontSize: 10, color: 'var(--text-dim)' }}>
+                    Blocked tools: {p.tools_blocked.length}
+                  </span>
+                  <span style={{ fontSize: 10, color: p.injection_level === 'maximum' ? 'var(--green)' : 'var(--text-dim)' }}>
+                    Injection: {p.injection_level}
+                  </span>
+                  {p.wiz_enabled && <span style={{ fontSize: 10, color: 'var(--green)' }}>WIZ: ON</span>}
+                </div>
+              </div>
+            )
+          })}
+          {profileMsg && (
+            <div style={{ marginTop: 8, padding: 10, borderRadius: 8, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--accent)', fontSize: 11, color: 'var(--accent)' }}>
+              {profileMsg}
+            </div>
+          )}
+          <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
+            <strong style={{ color: 'var(--text-2)' }}>Personal:</strong> Full tool access, standard security, localhost-only. For solo use.<br/>
+            <strong style={{ color: 'var(--text-2)' }}>Work:</strong> Restricted tools, maximum injection defense, WIZ integration, verbose audit, approved origins only. For enterprise environments.<br/>
+            <span style={{ color: 'var(--amber)' }}>Switching profiles requires a restart.</span>
+          </div>
+        </>
+      )}
 
       {/* GENERAL */}
       {!loading && section === 'general' && settings && (
