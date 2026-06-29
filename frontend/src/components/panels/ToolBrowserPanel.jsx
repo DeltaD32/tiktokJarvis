@@ -65,16 +65,16 @@ export function ToolBrowserPanel({ onClose, message }) {
       {/* Tab switcher */}
       <div style={{ display: 'flex', gap: 4, marginBottom: 12 }}>
         <button
-          className="hb-btn"
+          className="data-btn"
           onClick={() => setTab('tools')}
-          style={tab === 'tools' ? { borderColor: 'var(--cyan)', color: 'var(--cyan)' } : {}}
+          style={tab === 'tools' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}}
         >
           TOOLS ({tools.length})
         </button>
         <button
-          className="hb-btn"
+          className="data-btn"
           onClick={() => setTab('agents')}
-          style={tab === 'agents' ? { borderColor: 'var(--cyan)', color: 'var(--cyan)' } : {}}
+          style={tab === 'agents' ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : {}}
         >
           AGENTS ({agents.length})
         </button>

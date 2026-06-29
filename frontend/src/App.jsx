@@ -17,6 +17,7 @@ import { NoticesPanel }         from './components/panels/NoticesPanel'
 import { TasksPanel }           from './components/panels/TasksPanel'
 import { SecurityPanel }        from './components/panels/SecurityPanel'
 import { SettingsPanel }        from './components/panels/SettingsPanel'
+import { AnalyticsPanel }       from './components/panels/AnalyticsPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
 import { useVoiceRecorder }     from './hooks/useVoiceRecorder'
 import { useVoiceTTS }          from './hooks/useVoiceTTS'
@@ -43,9 +44,9 @@ Object.assign(ACCENT_RGB, {
 })
 
 const IDLE_STATS = [
-  { label: 'NEURAL CORES', value: '5', sub: 'online', pos: { left: '9%', top: '27%' }, key: 'cores' },
-  { label: 'MEMORY POOL', value: '44', sub: 'tools', pos: { right: '9%', top: '27%' }, key: 'tools' },
-  { label: 'UPLINK', value: 'SECURE', pos: { left: '11%', top: '60%' }, key: 'uplink' },
+  { label: 'HEARTBEAT', value: '—', pos: { left: '9%', top: '27%' }, key: 'heartbeat' },
+  { label: 'TOOLS', value: '46', pos: { right: '9%', top: '27%' }, key: 'tools' },
+  { label: 'UPLINK', value: '—', pos: { left: '11%', top: '60%' }, key: 'uplink' },
   { label: 'AGENTS', value: '5', sub: 'ready', pos: { right: '11%', top: '60%' }, key: 'agents' },
 ]
 
@@ -233,7 +234,6 @@ export default function App() {
         state={orbState}
         cost={cost}
         noticeCount={noticeCount}
-        agentCount={5}
         connected={connected}
         input={input}
         setInput={setInput}
@@ -241,7 +241,10 @@ export default function App() {
       />
 
       {/* Data panel buttons (right side of top strip area — small buttons) */}
-      <div style={{ position: 'absolute', top: 18, right: 30, zIndex: 7, display: 'flex', gap: 4 }}>
+      <div style={{ position: 'absolute', top: 14, right: 24, zIndex: 7, display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 320 }}>
+        <button className="data-btn" onClick={() => openLocalPanel('analytics')}>ANALYTICS</button>
+        <button className="data-btn" onClick={() => openLocalPanel('tools')}>TOOLS</button>
+        <button className="data-btn" onClick={() => openLocalPanel('notices')}>NOTICES{noticeCount > 0 ? ` (${noticeCount})` : ''}</button>
         <button className="data-btn" onClick={() => openLocalPanel('settings')}>SETTINGS</button>
         <button className="data-btn" onClick={() => openLocalPanel('security')}>SECURITY</button>
         <button className="data-btn" onClick={() => openLocalPanel('memory')}>MEMORY</button>
@@ -255,18 +258,25 @@ export default function App() {
         <div className="idle-view">
           {IDLE_STATS.map((s, i) => {
             let value = s.value, sub = s.sub, statColor = null
-            if (s.key === 'uplink' && uplink) {
+            if (s.key === 'heartbeat') {
+              value = heartbeatActive ? 'ACTIVE' : 'PAUSED'
+              statColor = heartbeatActive ? 'var(--green)' : 'var(--text-dim)'
+            } else if (s.key === 'uplink' && uplink) {
               if (uplink.status === 'connected') {
                 value = 'LINKED'
                 sub = uplink.model || ''
                 statColor = 'var(--green)'
               } else if (uplink.status === 'auth_error') {
                 value = 'AUTH FAIL'
-                sub = 'check API key'
+                sub = uplink.error?.slice(0, 20) || 'check API key'
                 statColor = 'var(--red)'
-              } else {
+              } else if (uplink.status === 'unreachable') {
                 value = 'OFFLINE'
                 sub = 'no connection'
+                statColor = 'var(--amber)'
+              } else {
+                value = 'ERROR'
+                sub = uplink.error?.slice(0, 20) || 'unknown'
                 statColor = 'var(--amber)'
               }
             } else if (s.key === 'agents') {
@@ -322,8 +332,8 @@ export default function App() {
             )}
             <div className="chip-row">
               <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
-              <button className="chip" onClick={() => { sendMessage('Search your state for Bruce'); setInput('') }}>Search memory</button>
-              <button className="chip" onClick={() => openLocalPanel('state')}>Browse state</button>
+              <button className="chip" onClick={() => { sendMessage('Search your memory for facts about me'); setInput('') }}>Search memory</button>
+              <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
               <button
                 className={`chip ${voiceEnabled ? 'active' : ''}`}
                 onClick={() => {
@@ -440,6 +450,9 @@ export default function App() {
         )}
         {panel === 'settings' && (
           <SettingsPanel key="settings" onClose={handleClose} message={panelMessage} />
+        )}
+        {panel === 'analytics' && (
+          <AnalyticsPanel key="analytics" onClose={handleClose} message={panelMessage} />
         )}
       </AnimatePresence>
 

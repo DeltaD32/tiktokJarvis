@@ -9,7 +9,7 @@ const STATE_LABELS = {
   complete:  ['COMPLETE', 'objective met'],
 }
 
-export function TopStrip({ state, cost, noticeCount, agentCount, connected, input, setInput, onSend }) {
+export function TopStrip({ state, cost, noticeCount, connected, input, setInput, onSend }) {
   const [ringLabel, ringSub] = STATE_LABELS[state] || STATE_LABELS.idle
 
   const handleKey = (e) => {
@@ -49,10 +49,6 @@ export function TopStrip({ state, cost, noticeCount, agentCount, connected, inpu
             RECONNECTING
           </span>
         )}
-        <div className="stat-block">
-          <div className="stat-value">{agentCount}<span className="stat-unit"> agents</span></div>
-          <div className="stat-label">ACTIVE</div>
-        </div>
         {noticeCount > 0 && (
           <div className="stat-block">
             <div className="stat-value accent">{noticeCount}</div>

@@ -203,6 +203,12 @@ def api_status():
     }
 
 
+@app.get("/api/analytics")
+def api_analytics():
+    """Return structured analytics: model calls, tool calls, gate decisions, per-tool usage."""
+    return audit.analytics()
+
+
 @app.get("/api/uplink")
 def api_uplink():
     """Check API connection + auth status for the active profile."""

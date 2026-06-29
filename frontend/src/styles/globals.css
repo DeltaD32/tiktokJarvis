@@ -915,6 +915,28 @@ body {
   letter-spacing: 0.08em;
 }
 
+/* ── Analytics Panel ────────────────────────────────────────────────────────── */
+.analytics-card {
+  padding: 14px;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.2);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.analytics-label {
+  font: 600 9px 'JetBrains Mono', monospace;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+.analytics-value {
+  font: 700 22px 'JetBrains Mono', monospace;
+  letter-spacing: 0.02em;
+}
+.analytics-mini {
+  font: 500 11px 'JetBrains Mono', monospace;
+}
+
 /* ── Connection banner ──────────────────────────────────────────────────────── */
 .conn-banner {
   position: fixed;

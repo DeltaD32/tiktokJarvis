@@ -23,15 +23,16 @@ def _broadcast(payload: dict) -> None:
     description=(
         "Open a UI panel in the frontend to show the user relevant information. "
         "Use 'tasks' to show the task list, 'notices' for proactive notices, "
-        "'audit' for the recent activity log, or 'memory' for stored facts. "
-        "Optionally include a message to display at the top of the panel."
+        "'audit' for the recent activity log, 'memory' for stored facts, "
+        "'tools' for the tool browser, 'analytics' for usage stats, "
+        "'security' for the security audit, or 'state' for the state browser."
     ),
     parameters={
         "type": "object",
         "properties": {
             "panel": {
                 "type": "string",
-                "enum": ["tasks", "notices", "audit", "memory"],
+                "enum": ["tasks", "notices", "audit", "memory", "tools", "analytics", "security", "state"],
                 "description": "Which panel to open.",
             },
             "message": {

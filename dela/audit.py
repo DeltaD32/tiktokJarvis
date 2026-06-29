@@ -86,6 +86,66 @@ def cost_summary() -> str:
     return f"{_model_calls} model calls, est. cost ${_estimated_cost:.4f}"
 
 
+def analytics() -> dict:
+    """Return structured analytics data parsed from the audit log."""
+    import json as _json
+    from collections import Counter
+
+    result = {
+        "model_calls": _model_calls,
+        "estimated_cost_usd": round(_estimated_cost, 4),
+        "tool_calls": 0,
+        "gate_granted": 0,
+        "gate_denied": 0,
+        "heartbeat_notices": 0,
+        "kill_switch_events": 0,
+        "tool_breakdown": {},
+        "recent_events": [],
+    }
+
+    if not _LOG.exists():
+        return result
+
+    lines = _LOG.read_text(encoding="utf-8").splitlines()
+    tool_counter: Counter = Counter()
+    recent: list[dict] = []
+
+    for line in lines:
+        if line.startswith("["):
+            # Parse timestamp
+            ts_end = line.index("]")
+            ts = line[1:ts_end]
+            rest = line[ts_end + 2:]
+
+            if rest.startswith("TOOL "):
+                result["tool_calls"] += 1
+                # Extract tool name
+                parts = rest[5:].split("(", 1)
+                if parts:
+                    tool_name = parts[0].strip()
+                    tool_counter[tool_name] += 1
+                    recent.append({"type": "tool", "name": tool_name, "ts": ts})
+            elif rest.startswith("MODEL "):
+                recent.append({"type": "model", "ts": ts})
+            elif rest.startswith("GATE "):
+                if "GRANTED" in rest:
+                    result["gate_granted"] += 1
+                    recent.append({"type": "gate", "verdict": "granted", "ts": ts})
+                elif "DENIED" in rest:
+                    result["gate_denied"] += 1
+                    recent.append({"type": "gate", "verdict": "denied", "ts": ts})
+            elif rest.startswith("HEARTBEAT "):
+                result["heartbeat_notices"] += 1
+                recent.append({"type": "heartbeat", "ts": ts})
+            elif rest.startswith("KILL_SWITCH "):
+                result["kill_switch_events"] += 1
+                recent.append({"type": "kill_switch", "ts": ts})
+
+    result["tool_breakdown"] = dict(tool_counter.most_common(20))
+    result["recent_events"] = recent[-30:]
+    return result
+
+
 def kill_switch(state: str) -> None:
     _write(f"[{_ts()}] KILL_SWITCH {state}")
 
