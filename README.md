@@ -1199,3 +1199,76 @@ being returned to the model.
 | `presenter` | `dela/agents/presenter.py` | Presentation design and generation |
 | `secretary` | `dela/agents/secretary.py` | Multi-agent project coordinator |
 | `workflow_designer` | `dela/agents/workflow_designer.py` | Workflow brainstorming, design, and refinement |
+| `system_expert` | `dela/agents/system_expert.py` | Architecture expert — advises on and implements new features |
+
+---
+
+## State Browser — No Black Box
+
+Dela has a unified state browser that can search, inspect, and edit ALL state.
+Nothing is hidden — the user and the model can see and influence everything.
+
+### 13 State Types
+
+| Type | Description | Editable |
+|---|---|---|
+| `memory` | Durable user facts | Yes (update/delete via PUT) |
+| `agent_memory` | Per-agent self-learning memory | Read |
+| `notices` | Proactive notices | Yes (dismiss via PUT) |
+| `tasks` | Project management tasks | Yes (update status/title) |
+| `routing` | Semantic routing cache | Read |
+| `cost` | Model cost tally | Read |
+| `audit` | Audit trail (append-only) | Read |
+| `events` | Lifecycle event log (JSONL) | Read |
+| `projects` | Multi-agent projects | Read |
+| `blackboards` | Shared workspaces | Read |
+| `sessions` | Conversation histories | Read |
+| `workflows` | Workflow definitions | Read |
+| `styles` | PPT style registry | Read |
+
+### REST Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/state` | GET | List all state types with item counts |
+| `/api/state/{type}` | GET | Read a state type (list view) |
+| `/api/state/{type}/{id}` | GET | Read a specific item |
+| `/api/state/{type}/{id}` | PUT | Edit an item (memory update/delete, notice dismiss, task update) |
+| `/api/state/search?q=...` | GET | Search across ALL state types |
+
+### Tools
+
+| Tool | Description |
+|---|---|
+| `search_state` | Search across all 13 state types for a query string |
+| `list_state_types` | List all state types with item counts |
+| `read_state` | Read a specific state type or item by ID |
+
+### UI Panel
+
+The **STATE** button in the top bar opens the State Browser panel, which provides:
+- Search bar (searches all state types)
+- State type list with item counts
+- Item list per type (click to view detail)
+- Item detail view (full JSON)
+- Inline edit/delete for memory facts and notices
+
+---
+
+## System Expert Agent
+
+The `system_expert` sub-agent is Dela's self-awareness. It knows:
+
+- The full file structure and what each module does
+- The architectural seams (provider, STT, TTS, tools, agents, skills)
+- How to add a new tool, agent, skill, channel, or check
+- The patterns to follow (one module per capability, behind seams, no core rewrites)
+- The safety posture (confirmation gate, prompt injection defense, audit trail)
+
+It can:
+1. **Advise:** "Where should I add a feature that does X?" → recommends the right seam
+2. **Implement:** "Add a tool that does X" → writes the code using `run_code` and registers it
+3. **Inspect:** "How does the tool registry work?" → explains the architecture
+4. **Review:** "Is this approach correct?" → checks against patterns
+
+It has access to `run_code` (to read/write files), `search_state` (to see what's registered), and `list_skills`/`list_workflows` (to check existing capabilities). It does NOT have access to consequential tools — it's an architect, not a worker.

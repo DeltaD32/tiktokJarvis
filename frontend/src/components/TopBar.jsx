@@ -17,6 +17,7 @@ export function TopBar({
   onOpenNotices,
   onOpenAudit,
   onOpenMemory,
+  onOpenState,
 }) {
   const dotClass = orbState === 'alert'
     ? 'status-dot alert'
@@ -63,6 +64,7 @@ export function TopBar({
 
         <button className="hb-btn" onClick={onOpenAudit}>AUDIT</button>
         <button className="hb-btn" onClick={onOpenMemory}>MEMORY</button>
+        <button className="hb-btn" onClick={onOpenState}>STATE</button>
       </div>
     </div>
   )

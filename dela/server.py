@@ -168,6 +168,34 @@ def api_status():
     }
 
 
+# ── State Browser endpoints ───────────────────────────────────────────────────
+
+@app.get("/api/state")
+def api_list_state_types():
+    from dela.state_browser import list_state_types
+    return list_state_types()
+
+@app.get("/api/state/{stype}")
+def api_read_state(stype: str, item_id: str | None = None, limit: int = 50):
+    from dela.state_browser import read_state
+    return read_state(stype, item_id=item_id, limit=limit)
+
+@app.get("/api/state/{stype}/{item_id}")
+def api_read_state_item(stype: str, item_id: str):
+    from dela.state_browser import read_state
+    return read_state(stype, item_id=item_id)
+
+@app.put("/api/state/{stype}/{item_id}")
+def api_edit_state(stype: str, item_id: str, body: dict):
+    from dela.state_browser import edit_state
+    return edit_state(stype, item_id, body)
+
+@app.get("/api/state/search")
+def api_search_state(q: str, limit: int = 20):
+    from dela.state_browser import search_state
+    return search_state(q, limit=limit)
+
+
 @app.put("/api/memory/{fact_id}")
 def api_update_memory(fact_id: int, body: dict):
     result = memory.update(fact_id, body["text"])
