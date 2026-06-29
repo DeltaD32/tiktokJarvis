@@ -50,11 +50,13 @@ def _client() -> OpenAI:
 
 
 def _thinking_kwargs() -> dict:
-    """Build thinking-level kwargs if configured."""
-    level = getattr(config, "THINKING_LEVEL", "").strip().lower()
+    """Build thinking-level kwargs if configured. Reads from live config."""
+    from dela import live_config
+    level = live_config.get("thinking_level", "").strip().lower() if live_config.get("thinking_level") else ""
+    if not level:
+        level = getattr(config, "THINKING_LEVEL", "").strip().lower()
     if not level:
         return {}
-    # OpenAI-compatible: reasoning_effort param (supported by o-series and some compatible providers)
     return {"reasoning_effort": level} if level in ("low", "medium", "high") else {}
 
 

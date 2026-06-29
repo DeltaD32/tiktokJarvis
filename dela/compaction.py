@@ -15,7 +15,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from dela import config, provider
+from dela import config, provider, live_config
 from dela.provider import Message, ProviderError
 
 # Default: compact when history exceeds ~100K chars (~25K tokens).
@@ -44,7 +44,8 @@ def _history_char_count(history: list[Message]) -> int:
 
 def should_compact(history: list[Message]) -> bool:
     """Check if the history exceeds the compaction threshold."""
-    threshold = int(getattr(config, "COMPACTION_THRESHOLD_CHARS", _DEFAULT_THRESHOLD_CHARS))
+    from dela import live_config
+    threshold = live_config.get("compaction_threshold_chars", _DEFAULT_THRESHOLD_CHARS)
     return _history_char_count(history) > threshold
 
 
@@ -57,7 +58,7 @@ def compact(history: list[Message]) -> list[Message]:
     Returns a new history list. If compaction fails (model unreachable),
     returns the original history unchanged — never breaks the conversation.
     """
-    keep_recent = int(getattr(config, "COMPACTION_KEEP_RECENT_CHARS", _DEFAULT_KEEP_RECENT_CHARS))
+    keep_recent = live_config.get("compaction_keep_recent_chars", _DEFAULT_KEEP_RECENT_CHARS)
 
     # Find the split point: keep the last N chars worth of messages
     recent_chars = 0

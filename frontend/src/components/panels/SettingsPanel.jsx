@@ -64,12 +64,30 @@ export function SettingsPanel({ onClose, message }) {
       .then(r => r.json())
       .then(data => {
         if (data.ok) {
-          setEnvMsg('Saved. Restart required to take effect.')
+          setEnvMsg('Saved to .env. Restart required to take effect.')
           setEnvKey(''); setEnvValue('')
         } else {
           setEnvMsg(data.error || 'Failed to save.')
         }
       })
+  }
+
+  const updateLive = (key, value) => {
+    fetch('/api/settings/live', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key, value }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) { refresh() }
+      })
+  }
+
+  const resetLive = (key) => {
+    fetch(`/api/settings/live/${key}`, { method: 'DELETE' })
+      .then(r => r.json())
+      .then(data => { if (data.ok) refresh() })
   }
 
   const sections = [
@@ -80,6 +98,36 @@ export function SettingsPanel({ onClose, message }) {
     { id: 'heartbeat', label: 'HEARTBEAT' },
     { id: 'env',      label: 'ENV VARS' },
   ]
+
+  const LiveField = ({ label, settingKey, value, options, hint }) => (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+        <span style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--text-dim)' }}>{label}</span>
+        <span style={{ fontSize: 8, color: 'var(--green)', padding: '1px 5px', border: '1px solid rgba(70,242,176,0.3)', borderRadius: 4 }}>LIVE</span>
+      </div>
+      {options ? (
+        <select
+          className="chat-input"
+          style={{ width: '100%', padding: '6px 8px', fontSize: 12 }}
+          value={value || ''}
+          onChange={e => updateLive(settingKey, e.target.value)}
+        >
+          {options.map(opt => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+        </select>
+      ) : (
+        <div style={{ display: 'flex', gap: 8 }}>
+          <input
+            className="chat-input"
+            style={{ flex: 1, fontSize: 12 }}
+            value={value || ''}
+            onChange={e => updateLive(settingKey, e.target.value)}
+          />
+          <button className="icon-btn" onClick={() => resetLive(settingKey)} style={{ fontSize: 9 }}>reset</button>
+        </div>
+      )}
+      {hint && <div style={{ fontSize: 10, color: 'var(--text-faint)', marginTop: 2 }}>{hint}</div>}
+    </div>
+  )
 
   const Field = ({ label, value, hint }) => (
     <div style={{ marginBottom: 12 }}>
@@ -175,9 +223,20 @@ export function SettingsPanel({ onClose, message }) {
       {!loading && section === 'general' && settings && (
         <>
           <Field label="ASSISTANT NAME" value={settings.model.name} />
-          <Field label="MODEL" value={settings.model.model} hint="Change via .env (DELA_MODEL) — requires restart" />
-          <Field label="API ENDPOINT" value={settings.model.base_url} hint="Change via .env (DELA_BASE_URL) — requires restart" />
-          <Field label="THINKING LEVEL" value={settings.model.thinking_level} hint="off/minimal/low/medium/high/xhigh" />
+          <Field label="MODEL" value={settings.model.model} hint="Change via ENV VARS tab (DELA_MODEL) — requires restart" />
+          <Field label="API ENDPOINT" value={settings.model.base_url} hint="Change via ENV VARS tab (DELA_BASE_URL) — requires restart" />
+          <LiveField
+            label="THINKING LEVEL"
+            settingKey="thinking_level"
+            value={settings.live?.thinking_level || ''}
+            options={[
+              { value: '', label: '(off)' },
+              { value: 'low', label: 'low' },
+              { value: 'medium', label: 'medium' },
+              { value: 'high', label: 'high' },
+            ]}
+            hint="Controls reasoning depth. Applied to next model call — no restart."
+          />
           <Field label="TRACING" value={settings.tracing.provider} />
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
             <Field label="TOOLS" value={`${settings.runtime.tools_count} registered`} />
@@ -190,13 +249,49 @@ export function SettingsPanel({ onClose, message }) {
       {/* VOICE */}
       {!loading && section === 'voice' && settings && (
         <>
-          <Field label="WHISPER MODEL" value={settings.voice.whisper_model} hint="tiny.en / base.en / small.en / medium.en" />
-          <Field label="WHISPER DEVICE" value={settings.voice.whisper_device} hint="cuda / cpu" />
-          <Field label="WHISPER COMPUTE" value={settings.voice.whisper_compute} hint="float16 / int8 / float32" />
-          <Field label="PIPER VOICE" value={settings.voice.piper_voice} />
-          <Field label="VAD AGGRESSIVENESS" value={settings.voice.vad_aggressiveness} hint="0-3 (higher = more aggressive)" />
-          <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)', fontSize: 11, color: 'var(--text-3)' }}>
-            Voice settings are read from .env at startup. Use ENV VARS tab to change them (requires restart).
+          <LiveField
+            label="WHISPER MODEL"
+            settingKey="whisper_model"
+            value={settings.live?.whisper_model || settings.voice.whisper_model}
+            options={[
+              { value: 'tiny.en', label: 'tiny.en (fastest)' },
+              { value: 'base.en', label: 'base.en' },
+              { value: 'small.en', label: 'small.en (recommended)' },
+              { value: 'medium.en', label: 'medium.en (slower)' },
+            ]}
+            hint="Reloaded on next STT call — no restart."
+          />
+          <LiveField
+            label="WHISPER DEVICE"
+            settingKey="whisper_device"
+            value={settings.live?.whisper_device || settings.voice.whisper_device}
+            options={[
+              { value: 'cuda', label: 'cuda (GPU)' },
+              { value: 'cpu', label: 'cpu' },
+            ]}
+            hint="Reloaded on next STT call — no restart."
+          />
+          <Field label="WHISPER COMPUTE" value={settings.voice.whisper_compute} hint="float16 / int8 / float32 — change via .env" />
+          <LiveField
+            label="PIPER VOICE"
+            settingKey="piper_voice"
+            value={settings.live?.piper_voice || settings.voice.piper_voice}
+            options={[
+              { value: 'en_US-amy-medium', label: 'en_US-amy-medium (female)' },
+              { value: 'en_US-lessac-medium', label: 'en_US-lessac-medium (female)' },
+              { value: 'en_US-libritts-high', label: 'en_US-libritts-high (high quality)' },
+              { value: 'en_GB-alan-medium', label: 'en_GB-alan-medium (male, British)' },
+            ]}
+            hint="Reloaded on next TTS call — no restart."
+          />
+          <LiveField
+            label="VAD AGGRESSIVENESS"
+            settingKey="vad_aggressiveness"
+            value={settings.live?.vad_aggressiveness ?? settings.voice.vad_aggressiveness}
+            hint="0-3 (higher = more aggressive). Applied to next voice session."
+          />
+          <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(70,242,176,0.05)', border: '1px solid rgba(70,242,176,0.2)', fontSize: 11, color: 'var(--green)' }}>
+            Voice settings marked LIVE apply immediately — no restart needed. They persist across restarts via dela_state/live_settings.json.
           </div>
         </>
       )}

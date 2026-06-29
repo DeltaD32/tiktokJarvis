@@ -277,6 +277,7 @@ def api_get_settings():
             "tools_count": len(registry.all()),
             "agents_count": len(__import__('dela.agents', fromlist=['list_agents']).list_agents()),
         },
+        "live": __import__('dela.live_config', fromlist=['all_live']).all_live(),
     }
 
 @app.put("/api/settings/heartbeat")
@@ -325,6 +326,43 @@ def api_switch_profile(body: dict):
     if success:
         return {"ok": True, "profile": name, "note": "Restart required to apply the new security profile."}
     return {"ok": False, "error": "Could not write to .env file."}
+
+
+@app.get("/api/settings/live")
+def api_get_live_settings():
+    """Get all live settings with their current values and whether they're overridden."""
+    from dela import live_config
+    return {
+        "live": live_config.all_live(),
+        "overridden": live_config.all_overrides(),
+        "available": list(live_config.LIVE_SETTINGS.keys()),
+    }
+
+
+@app.put("/api/settings/live")
+def api_update_live_setting(body: dict):
+    """Update a live setting. Takes effect immediately — no restart needed."""
+    from dela import live_config
+    key = body.get("key", "")
+    value = body.get("value")
+    if not key:
+        return {"ok": False, "error": "Missing 'key' field."}
+    if not live_config.is_live(key):
+        return {"ok": False, "error": f"'{key}' is not a live setting. Live settings: {', '.join(live_config.LIVE_SETTINGS.keys())}"}
+    success = live_config.set(key, value)
+    if success:
+        return {"ok": True, "key": key, "value": live_config.get(key), "note": "Applied immediately — no restart needed."}
+    return {"ok": False, "error": f"Could not set '{key}' — check the value type."}
+
+
+@app.delete("/api/settings/live/{key}")
+def api_reset_live_setting(key: str):
+    """Reset a live setting to its config.py default."""
+    from dela import live_config
+    if not live_config.is_live(key):
+        return {"ok": False, "error": f"'{key}' is not a live setting."}
+    live_config.reset(key)
+    return {"ok": True, "key": key, "value": live_config.get(key), "note": "Reset to default."}
 
 
 @app.put("/api/memory/{fact_id}")
