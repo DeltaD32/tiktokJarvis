@@ -71,3 +71,28 @@ def dispatch_subagent(args: dict) -> str:
         tool_whitelist=soul.tool_whitelist,
     )
     return f"[Sub-agent '{agent_name}' result]:\n{result}"
+
+
+@register(
+    name="dispatch_system_expert",
+    description=(
+        "Dispatch the system_expert sub-agent to answer architecture questions, "
+        "advise on where to add new features, inspect the codebase, or implement "
+        "new capabilities (tools, agents, skills, channels, checks). Use this when "
+        "the user wants to extend Dela, understand its internals, or asks 'how does "
+        "X work' about Dela's own code. The system expert knows every module, seam, "
+        "and pattern, and can write code via run_code."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "task": {
+                "type": "string",
+                "description": "The architecture question, feature request, or implementation task for the system expert.",
+            },
+        },
+        "required": ["task"],
+    },
+)
+def dispatch_system_expert(args: dict) -> str:
+    return dispatch_subagent({"agent": "system_expert", "task": args["task"]})

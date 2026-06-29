@@ -154,8 +154,27 @@ def api_get_tasks():
 @app.get("/api/tools")
 def api_get_tools():
     return [
-        {"name": t.name, "description": t.description, "requires_confirmation": t.requires_confirmation}
+        {
+            "name": t.name,
+            "description": t.description,
+            "requires_confirmation": t.requires_confirmation,
+            "param_count": len(t.parameters.get("properties", {})),
+        }
         for t in registry.all()
+    ]
+
+
+@app.get("/api/agents")
+def api_get_agents():
+    from dela.agents import list_agents
+    return [
+        {
+            "name": a.name,
+            "description": a.description,
+            "tool_count": len(a.tool_whitelist) if a.tool_whitelist else "all",
+            "tools": sorted(a.tool_whitelist) if a.tool_whitelist else None,
+        }
+        for a in list_agents()
     ]
 
 
@@ -175,6 +194,11 @@ def api_list_state_types():
     from dela.state_browser import list_state_types
     return list_state_types()
 
+@app.get("/api/state/search")
+def api_search_state(q: str, limit: int = 20):
+    from dela.state_browser import search_state
+    return search_state(q, limit=limit)
+
 @app.get("/api/state/{stype}")
 def api_read_state(stype: str, item_id: str | None = None, limit: int = 50):
     from dela.state_browser import read_state
@@ -189,11 +213,6 @@ def api_read_state_item(stype: str, item_id: str):
 def api_edit_state(stype: str, item_id: str, body: dict):
     from dela.state_browser import edit_state
     return edit_state(stype, item_id, body)
-
-@app.get("/api/state/search")
-def api_search_state(q: str, limit: int = 20):
-    from dela.state_browser import search_state
-    return search_state(q, limit=limit)
 
 
 @app.put("/api/memory/{fact_id}")

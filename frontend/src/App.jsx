@@ -12,6 +12,7 @@ import { NoticesPanel }         from './components/panels/NoticesPanel'
 import { AuditPanel }           from './components/panels/AuditPanel'
 import { MemoryPanel }          from './components/panels/MemoryPanel'
 import { StateBrowserPanel }    from './components/panels/StateBrowserPanel'
+import { ToolBrowserPanel }     from './components/panels/ToolBrowserPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
 
 export default function App() {
@@ -107,6 +108,7 @@ export default function App() {
         onOpenAudit={() => openPanel('audit')}
         onOpenMemory={() => openPanel('memory')}
         onOpenState={() => openPanel('state')}
+        onOpenTools={() => openPanel('tools')}
       />
 
       {/* Conversation overlay */}
@@ -157,6 +159,9 @@ export default function App() {
         )}
         {panel === 'state' && (
           <StateBrowserPanel key="state" onClose={handleClose} message={panelMessage} />
+        )}
+        {panel === 'tools' && (
+          <ToolBrowserPanel key="tools" onClose={handleClose} message={panelMessage} />
         )}
       </AnimatePresence>
 

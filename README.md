@@ -1272,3 +1272,37 @@ It can:
 4. **Review:** "Is this approach correct?" → checks against patterns
 
 It has access to `run_code` (to read/write files), `search_state` (to see what's registered), and `list_skills`/`list_workflows` (to check existing capabilities). It does NOT have access to consequential tools — it's an architect, not a worker.
+
+### dispatch_system_expert Tool
+
+The `dispatch_system_expert` tool is a convenience wrapper around `dispatch_subagent` that's specifically for the system expert. It makes the capability more discoverable for the lead agent:
+
+| Tool | Parameters | Confirmation | Description |
+|---|---|---|---|
+| `dispatch_system_expert` | `task` (string) | No | Delegate architecture questions, feature requests, or implementation tasks to the system expert |
+
+The lead agent can also use `dispatch_subagent` with `agent="system_expert"` — same result, just less discoverable.
+
+---
+
+## Tool Browser
+
+The **TOOLS** button in the top bar opens the Tool Browser panel, which provides full visibility into Dela's capabilities:
+
+### Tools Tab
+- **Filter bar:** search by tool name or description
+- **Requires Confirmation section:** all tools that send/spend/delete/change (19 tools)
+- **Safe / Read-Only section:** all tools that only read or compute (25 tools)
+- Each tool shows: name, description, parameter count, and CONFIRM/SAFE badge
+
+### Agents Tab
+- **Filter bar:** search by agent name or description
+- **Agent list:** name, description, tool count
+- **Click an agent** to see its full tool whitelist — which tools it can use and which are excluded
+
+### REST Endpoints
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/tools` | GET | List all tools with name, description, confirmation flag, param count |
+| `/api/agents` | GET | List all sub-agents with name, description, tool count, and full whitelist |
