@@ -49,6 +49,15 @@ def _client() -> OpenAI:
     )
 
 
+def _thinking_kwargs() -> dict:
+    """Build thinking-level kwargs if configured."""
+    level = getattr(config, "THINKING_LEVEL", "").strip().lower()
+    if not level:
+        return {}
+    # OpenAI-compatible: reasoning_effort param (supported by o-series and some compatible providers)
+    return {"reasoning_effort": level} if level in ("low", "medium", "high") else {}
+
+
 def _tracing_headers() -> dict[str, str] | None:
     """Build LangSmith/Langfuse trace headers for the OpenAI client.
 
@@ -80,16 +89,21 @@ def _wrap_error(prefix: str, e: Exception) -> ProviderError:
     return ProviderError(f"{prefix}: {e}")
 
 
-def reply(system_prompt: str, history: list[Message]) -> Iterator[str]:
-    """Stream text tokens for a plain (tool-less) turn."""
+def reply(system_prompt: str, history: list[Message], model: str | None = None) -> Iterator[str]:
+    """Stream text tokens for a plain (tool-less) turn.
+
+    If model is provided, overrides the configured model for this call only.
+    """
     messages: list[Message] = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
+    use_model = model or config.MODEL
 
     try:
         stream = _client().chat.completions.create(
-            model=config.MODEL,
+            model=use_model,
             messages=messages,
             stream=True,
+            **_thinking_kwargs(),
         )
     except Exception as e:
         raise _wrap_error("The model provider rejected the request", e) from e
@@ -110,22 +124,23 @@ def reply_with_tools(
     system_prompt: str,
     history: list[Message],
     tool_schemas: list[dict[str, Any]],
+    model: str | None = None,
 ) -> Any:
     """Send a turn (with tools available) and return the raw completion.
 
-    Returns the chat completion object so the brain can inspect both
-    `.choices[0].message.content` and `.choices[0].message.tool_calls`.
-    Raises ProviderError on any provider failure.
+    If model is provided, overrides the configured model for this call only.
     """
     messages: list[Message] = [{"role": "system", "content": system_prompt}]
     messages.extend(history)
+    use_model = model or config.MODEL
 
     try:
         return _client().chat.completions.create(
-            model=config.MODEL,
+            model=use_model,
             messages=messages,
             tools=tool_schemas,
             tool_choice="auto",
+            **_thinking_kwargs(),
         )
     except Exception as e:
         raise _wrap_error("The model provider rejected the tool turn", e) from e

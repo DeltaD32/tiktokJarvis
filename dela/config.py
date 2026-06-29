@@ -38,6 +38,13 @@ WHISPER_COMPUTE = _optional("DELA_WHISPER_COMPUTE", "float16")
 PIPER_VOICE = _optional("DELA_PIPER_VOICE", "en_US-amy-medium")
 VAD_AGGRESSIVENESS = int(_optional("DELA_VAD_AGGRESSIVENESS", "3"))
 
+# Compaction (auto-summarize when conversation gets long)
+COMPACTION_THRESHOLD_CHARS = int(_optional("DELA_COMPACTION_THRESHOLD_CHARS", "100000"))
+COMPACTION_KEEP_RECENT_CHARS = int(_optional("DELA_COMPACTION_KEEP_RECENT_CHARS", "20000"))
+
+# Thinking level (off/minimal/low/medium/high/xhigh — model-dependent)
+THINKING_LEVEL = _optional("DELA_THINKING_LEVEL", "")  # empty = don't send
+
 # Tracing (optional). Set PROVIDER to "langsmith" or "langfuse" to enable.
 TRACING_PROVIDER = _optional("DELA_TRACING_PROVIDER", "")  # "" = disabled
 TRACING_PROJECT = _optional("DELA_TRACING_PROJECT", "dela")

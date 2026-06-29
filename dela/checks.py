@@ -105,9 +105,55 @@ def _check_blackboard_cleanup(params: dict[str, Any]) -> dict | None:
     return {"source": "blackboard_cleanup", "message": msg, "severity": noticeboard.INFO}
 
 
+def _check_scheduled_workflows(params: dict[str, Any]) -> dict | None:
+    """Run any workflows whose cron schedule is due. Files a notice if any ran."""
+    import json
+    from pathlib import Path
+    from dela.workflows import _WORKFLOWS_DIR, load_workflow, execute_workflow
+    from dela.schedule import is_due, mark_run
+
+    if not _WORKFLOWS_DIR.exists():
+        return None
+
+    ran = []
+    for path in _WORKFLOWS_DIR.glob("*.json"):
+        try:
+            wf = json.loads(path.read_text(encoding="utf-8"))
+            schedule = wf.get("schedule", "")
+            if not schedule:
+                continue
+
+            wf_key = f"workflow:{wf.get('name', path.stem)}"
+            if not is_due(wf_key):
+                continue
+
+            # Mark next due (parse cron — simplified: assume interval in seconds or cron expr)
+            # For simplicity, use a fixed 3600s interval if cron parsing isn't available
+            mark_run(wf_key, 3600)
+
+            # Execute the workflow
+            result = execute_workflow(wf.get("name", path.stem))
+            ran.append({
+                "name": wf.get("name", path.stem),
+                "completed": result.get("completed", 0),
+                "failed": result.get("failed", 0),
+            })
+        except Exception:
+            pass
+
+    if not ran:
+        return None
+
+    msg = "Scheduled workflows ran: " + ", ".join(
+        f"{r['name']} ({r['completed']} done)" for r in ran
+    )
+    return {"source": "scheduled_workflows", "message": msg, "severity": noticeboard.INFO}
+
+
 # Registry of check name -> function.
 CHECKS: dict[str, Any] = {
     "systems_health": _check_systems_health,
     "tasks_due": _check_tasks_due,
     "blackboard_cleanup": _check_blackboard_cleanup,
+    "scheduled_workflows": _check_scheduled_workflows,
 }

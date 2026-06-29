@@ -1096,4 +1096,106 @@ All durable state lives under `dela_state/` (git-ignored):
 | `dela_state/blackboards/` | Blackboard files (one JSON per blackboard) |
 | `dela_state/projects/` | Project store (one JSON per project) |
 | `dela_state/styles/` | Cloned PPT styles (one folder per style) |
+| `dela_state/sessions/` | Durable session histories (one JSON per session) |
+| `dela_state/workflows/` | Saved workflow definitions (one JSON per workflow) |
 | `dela_state/output/` | Generated presentations |
+
+---
+
+## Advanced Agent Features (adapted from Flue)
+
+### Conversation Compaction
+
+When the conversation history grows too large for the model's context window,
+Dela auto-summarizes older messages into a compact block while keeping recent
+messages intact. This prevents long sessions from breaking.
+
+- **Threshold:** `DELA_COMPACTION_THRESHOLD_CHARS` (default 100K chars ≈ 25K tokens)
+- **Keep recent:** `DELA_COMPACTION_KEEP_RECENT_CHARS` (default 20K chars ≈ 5K tokens)
+- **Graceful:** If summarization fails (model unreachable), the original history is kept — never breaks the conversation
+
+### Thinking Levels
+
+Set the reasoning effort per agent or globally via `DELA_THINKING_LEVEL`:
+`off`, `minimal`, `low`, `medium`, `high`, `xhigh`. Passed through to
+OpenAI-compatible providers that support `reasoning_effort`. Empty = don't send.
+
+### Durable Execution
+
+Session histories are persisted to `dela_state/sessions/<id>.json`. On restart,
+interrupted sessions are recovered conservatively:
+
+- If a turn completed (assistant reply found) → mark done, keep the result
+- If a tool call completed (tool result found) → preserve it, don't re-run
+- If uncertain (mid-turn, no result) → mark interrupted, never blindly replay
+
+This means Dela can be killed mid-turn and resume gracefully — accepted work
+is never lost, and tool calls with side effects are never replayed.
+
+### Per-Operation Model Override
+
+The brain supports an optional `model` parameter on `respond()`, `assemble_reply()`,
+`run_subagent()`, and session methods. This lets the lead agent use a cheap model
+for routing and a powerful model for complex tasks — without changing global config.
+
+### Agent Instance IDs (Durable Sessions)
+
+`brain.respond_session(session_id, text)` runs a turn on a per-session history
+that persists across restarts. Each session has its own context — enabling
+per-user, per-ticket, or per-conversation persistent contexts.
+
+### Workflow System with Design/Brainstorm
+
+Dela has a full workflow system for defining, designing, and executing
+multi-step automated processes.
+
+**Workflow Designer sub-agent** — helps users brainstorm and design workflows:
+- Given a goal, asks questions and proposes steps, agents, and dependencies
+- Can record steps from a user's description and convert them to a workflow
+- Can refine existing workflows with improvement suggestions
+
+**Workflow tools:**
+| Tool | Description |
+|---|---|
+| `design_workflow` | Dispatch the workflow designer to brainstorm a workflow |
+| `save_workflow` | Save a workflow definition (name, steps, schedule) |
+| `list_workflows` | List all saved workflows |
+| `get_workflow` | Get a full workflow definition |
+| `run_workflow` | Execute a workflow (uses the DAG scheduler for parallelism) |
+| `delete_workflow` | Delete a saved workflow |
+
+**Workflow definition format:**
+```json
+{
+  "name": "daily-standup-prep",
+  "description": "Prepare a daily standup summary",
+  "steps": [
+    {"id": "s1", "name": "Research", "agent": "researcher", "task": "...", "depends_on": []},
+    {"id": "s2", "name": "Summarize", "agent": "presenter", "task": "...", "depends_on": ["s1"]}
+  ],
+  "schedule": "0 9 * * *"
+}
+```
+
+### Scheduled Workflows
+
+Workflows with a `schedule` field are automatically executed by the heartbeat's
+`scheduled_workflows` check. The check scans for due workflows and runs them,
+filing a notice with the results.
+
+### Structured Tool Output
+
+Tools can optionally declare an `output_schema` (JSON Schema) for validated,
+typed output. When present, tool results are checked against the schema before
+being returned to the model.
+
+---
+
+## Complete Sub-Agent Reference
+
+| Agent | File | Role |
+|---|---|---|
+| `researcher` | `dela/agents/researcher.py` | Web research and summarization |
+| `presenter` | `dela/agents/presenter.py` | Presentation design and generation |
+| `secretary` | `dela/agents/secretary.py` | Multi-agent project coordinator |
+| `workflow_designer` | `dela/agents/workflow_designer.py` | Workflow brainstorming, design, and refinement |

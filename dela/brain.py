@@ -23,6 +23,7 @@ from typing import Any
 
 from dela import audit, gate, provider, system_prompt
 from dela.provider import Message, ProviderError
+from dela.compaction import maybe_compact
 
 # Tools are registered on import of dela.tools.
 from dela.tools import registry  # noqa: E402
@@ -39,28 +40,36 @@ def _system_prompt() -> str:
     return system_prompt.build_system_prompt()
 
 
-def respond(history: list[Message], user_text: str) -> Iterator[str]:
+def respond(history: list[Message], user_text: str, model: str | None = None) -> Iterator[str]:
     """Take a turn of user input and yield reply tokens as they stream.
 
     Mutates `history` in place: appends the user turn up front and the final
     assistant reply (plus any tool-call / tool-result messages) as it goes.
     On provider failure, yields a clean human message instead of raising.
+
+    If model is provided, overrides the configured model for this turn only.
     """
     history.append({"role": "user", "content": user_text})
 
     try:
-        yield from _run_turn(history)
+        yield from _run_turn(history, model=model)
     except ProviderError as e:
         history.pop()  # drop the user turn so retry is clean
         yield f"[I can't reach my brain right now: {e}. Try again in a moment.]"
 
 
-def _run_turn(history: list[Message]) -> Iterator[str]:
+def _run_turn(history: list[Message], model: str | None = None) -> Iterator[str]:
     """One full turn: tool-call loop, then stream the final text reply."""
+    # Auto-compact if history is too large
+    compacted = maybe_compact(history)
+    if compacted is not history:
+        history.clear()
+        history.extend(compacted)
+
     schemas = registry.schemas()
 
     for _ in range(_MAX_TOOL_ROUNDS):
-        completion = provider.reply_with_tools(_system_prompt(), history, schemas)
+        completion = provider.reply_with_tools(_system_prompt(), history, schemas, model=model)
         audit.model_call(provider.config.MODEL)
         msg = completion.choices[0].message
 
@@ -274,7 +283,39 @@ def _run_one_tool_scoped(
     audit.tool_call(name, args, result)
 
 
-def assemble_reply(history: list[Message], user_text: str) -> str:
+def assemble_reply(history: list[Message], user_text: str, model: str | None = None) -> str:
     """Run a turn and return the assembled reply. History is updated in place."""
-    full = "".join(respond(history, user_text))
+    full = "".join(respond(history, user_text, model=model))
     return full
+
+
+def respond_session(
+    session_id: str,
+    user_text: str,
+    model: str | None = None,
+) -> Iterator[str]:
+    """Run a turn on a durable, per-session history.
+
+    The session history is loaded from disk (or created fresh), the turn runs,
+    and the updated history is saved back. This enables per-user, per-ticket,
+    or per-conversation persistent contexts that survive restarts.
+
+    Use this instead of respond() when you need durable sessions.
+    """
+    from dela import sessions as _sessions
+
+    history = _sessions.get_or_create_history(session_id)
+    try:
+        for token in respond(history, user_text, model=model):
+            yield token
+    finally:
+        _sessions.auto_save_after_turn(session_id, history)
+
+
+def assemble_reply_session(
+    session_id: str,
+    user_text: str,
+    model: str | None = None,
+) -> str:
+    """Run a turn on a durable session and return the assembled reply."""
+    return "".join(respond_session(session_id, user_text, model=model))

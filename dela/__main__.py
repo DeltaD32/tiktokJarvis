@@ -82,6 +82,12 @@ def main() -> None:
     # Wire in the confirmation gate for text mode.
     gate.set_confirmer(gate.TextConfirmer())
 
+    # Recover any interrupted sessions from a previous run
+    from dela import sessions
+    recovered = sessions.recover_interrupted()
+    for r in recovered:
+        print(f"[session recovery] {r['id']}: {r['action']}")
+
     # Start the heartbeat in the background.
     heartbeat.start()
     print(f"{config.NAME} is ready. Heartbeat is running. Type a message and press Enter. Ctrl+C to quit.")
