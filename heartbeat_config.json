@@ -30,6 +30,11 @@
       "enabled": true,
       "interval_seconds": 300,
       "surface_on": "ran"
+    },
+    "security_scan": {
+      "enabled": true,
+      "interval_seconds": 3600,
+      "surface_on": "critical"
     }
   }
 }

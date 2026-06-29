@@ -16,9 +16,14 @@
   --border:       rgba(255,255,255,0.09);
   --border-hover: rgba(0,240,255,0.4);
 
-  /* State-based accent (overridden by JS) */
+  /* State-based accent (overridden by JS + theme) */
   --accent:       var(--cyan);
   --accent-rgb:   0,240,255;
+  --idle-rgb:     0,240,255;
+  --thinking-rgb: 179,136,255;
+  --busy-rgb:     255,179,0;
+  --alert-rgb:    255,90,69;
+  --complete-rgb: 70,242,176;
 }
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }

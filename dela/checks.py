@@ -150,10 +150,29 @@ def _check_scheduled_workflows(params: dict[str, Any]) -> dict | None:
     return {"source": "scheduled_workflows", "message": msg, "severity": noticeboard.INFO}
 
 
+def _check_security_scan(params: dict[str, Any]) -> dict | None:
+    """Run a security scan and file a notice if critical findings are detected."""
+    from dela.security import run_full_scan
+
+    report = run_full_scan()
+    critical = report["summary"]["critical"]
+    warning = report["summary"]["warning"]
+
+    if critical > 0:
+        crit_titles = [f["title"] for f in report["findings"] if f["severity"] == "critical"]
+        msg = f"Security scan found {critical} critical issue(s): {'; '.join(crit_titles[:3])}"
+        return {"source": "security_scan", "message": msg, "severity": noticeboard.URGENT}
+    elif warning > 0:
+        msg = f"Security scan found {warning} warning(s). Score: {report['score']}/100."
+        return {"source": "security_scan", "message": msg, "severity": noticeboard.ATTENTION}
+    return None
+
+
 # Registry of check name -> function.
 CHECKS: dict[str, Any] = {
     "systems_health": _check_systems_health,
     "tasks_due": _check_tasks_due,
     "blackboard_cleanup": _check_blackboard_cleanup,
     "scheduled_workflows": _check_scheduled_workflows,
+    "security_scan": _check_security_scan,
 }

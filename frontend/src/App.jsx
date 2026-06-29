@@ -15,7 +15,10 @@ import { ToolBrowserPanel }    from './components/panels/ToolBrowserPanel'
 import { AuditPanel }          from './components/panels/AuditPanel'
 import { NoticesPanel }         from './components/panels/NoticesPanel'
 import { TasksPanel }           from './components/panels/TasksPanel'
+import { SecurityPanel }        from './components/panels/SecurityPanel'
+import { SettingsPanel }        from './components/panels/SettingsPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
+import { applyTheme, getCurrentTheme, THEMES } from './themes'
 
 const ACCENT_RGB = {
   idle:     '0,240,255',
@@ -25,6 +28,17 @@ const ACCENT_RGB = {
   alert:    '255,90,69',
   complete: '70,242,176',
 }
+
+// Merge theme colors into ACCENT_RGB
+const _themeName = getCurrentTheme()
+const _theme = THEMES[_themeName] || THEMES.jarvis
+Object.assign(ACCENT_RGB, {
+  idle:     _theme.colors.idle,
+  thinking: _theme.colors.thinking,
+  busy:     _theme.colors.busy,
+  alert:    _theme.colors.alert,
+  complete: _theme.colors.complete,
+})
 
 const IDLE_STATS = [
   { label: 'NEURAL CORES', value: '5', sub: 'online', pos: { left: '9%', top: '27%' } },
@@ -50,6 +64,11 @@ export default function App() {
   })
   const [localPanel, setLocalPanel] = useState(null)
   const zRef = useRef(1)
+
+  // Initialize theme on mount
+  useEffect(() => {
+    applyTheme(getCurrentTheme())
+  }, [])
 
   // Update CSS accent variables when state changes
   useEffect(() => {
@@ -145,6 +164,8 @@ export default function App() {
 
       {/* Data panel buttons (right side of top strip area — small buttons) */}
       <div style={{ position: 'absolute', top: 18, right: 30, zIndex: 7, display: 'flex', gap: 4 }}>
+        <button className="data-btn" onClick={() => openLocalPanel('settings')}>SETTINGS</button>
+        <button className="data-btn" onClick={() => openLocalPanel('security')}>SECURITY</button>
         <button className="data-btn" onClick={() => openLocalPanel('memory')}>MEMORY</button>
         <button className="data-btn" onClick={() => openLocalPanel('state')}>STATE</button>
         <button className="data-btn" onClick={() => openLocalPanel('audit')}>AUDIT</button>
@@ -284,6 +305,12 @@ export default function App() {
         )}
         {panel === 'tasks' && (
           <TasksPanel key="tasks" onClose={handleClose} message={panelMessage} />
+        )}
+        {panel === 'security' && (
+          <SecurityPanel key="security" onClose={handleClose} message={panelMessage} />
+        )}
+        {panel === 'settings' && (
+          <SettingsPanel key="settings" onClose={handleClose} message={panelMessage} />
         )}
       </AnimatePresence>
 

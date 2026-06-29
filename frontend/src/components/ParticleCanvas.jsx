@@ -9,6 +9,23 @@ const STATE_COLORS = {
   complete:  [70, 242, 176],
 }
 
+// Read theme colors from CSS variables (set by themes.js)
+function getThemeColors() {
+  const root = getComputedStyle(document.documentElement)
+  const get = (name) => {
+    const val = root.getPropertyValue(name).trim()
+    if (val && val.includes(',')) return val.split(',').map(s => parseInt(s.trim()))
+    return null
+  }
+  return {
+    idle:     get('--idle-rgb'),
+    thinking: get('--thinking-rgb'),
+    busy:     get('--busy-rgb'),
+    alert:    get('--alert-rgb'),
+    complete: get('--complete-rgb'),
+  }
+}
+
 export function ParticleCanvas({ state, speaking, muted }) {
   const canvasRef = useRef(null)
   const stateRef = useRef(state)
@@ -91,7 +108,14 @@ export function ParticleCanvas({ state, speaking, muted }) {
       scale += ((work ? 0.6 : 1) - scale) * 0.06
       cyf += ((work ? 0.43 : 0.47) - cyf) * 0.06
 
-      const tg = STATE_COLORS[st] || STATE_COLORS.idle
+      // Merge theme colors with defaults
+      const themeColors = getThemeColors()
+      const stateColors = { ...STATE_COLORS }
+      for (const [k, v] of Object.entries(themeColors)) {
+        if (v && v.length === 3) stateColors[k] = v
+      }
+
+      const tg = stateColors[st] || stateColors.idle
       for (let i = 0; i < 3; i++) ring[i] += (tg[i] - ring[i]) * 0.06
       const [r, g, b] = ring.map(Math.round)
       const col = (a) => `rgba(${r},${g},${b},${a})`

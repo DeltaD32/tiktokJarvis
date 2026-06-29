@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import sys
 import threading
 import uuid
 from contextlib import asynccontextmanager
@@ -23,7 +24,7 @@ from dela import audit, heartbeat, memory, noticeboard
 from dela.brain import respond
 from dela.gate import Confirmer, set_confirmer
 from dela.tools import registry
-from dela.channels.config import is_enabled
+from dela.channels.config import is_enabled, load as load_channels_config
 
 # ── Global state (single-user local app) ─────────────────────────────────────
 _main_loop: asyncio.AbstractEventLoop | None = None
@@ -177,7 +178,6 @@ def api_get_agents():
         for a in list_agents()
     ]
 
-
 @app.get("/api/status")
 def api_status():
     return {
@@ -189,15 +189,15 @@ def api_status():
 
 # ── State Browser endpoints ───────────────────────────────────────────────────
 
-@app.get("/api/state")
-def api_list_state_types():
-    from dela.state_browser import list_state_types
-    return list_state_types()
-
 @app.get("/api/state/search")
 def api_search_state(q: str, limit: int = 20):
     from dela.state_browser import search_state
     return search_state(q, limit=limit)
+
+@app.get("/api/state")
+def api_list_state_types():
+    from dela.state_browser import list_state_types
+    return list_state_types()
 
 @app.get("/api/state/{stype}")
 def api_read_state(stype: str, item_id: str | None = None, limit: int = 50):
@@ -213,6 +213,91 @@ def api_read_state_item(stype: str, item_id: str):
 def api_edit_state(stype: str, item_id: str, body: dict):
     from dela.state_browser import edit_state
     return edit_state(stype, item_id, body)
+
+
+# ── Security endpoints ────────────────────────────────────────────────────────
+
+@app.get("/api/security")
+def api_security_status():
+    from dela.security import last_scan
+    return last_scan()
+
+@app.post("/api/security/scan")
+def api_security_scan():
+    from dela.security import run_full_scan
+    return run_full_scan()
+
+
+# ── Settings endpoints ────────────────────────────────────────────────────────
+
+@app.get("/api/settings")
+def api_get_settings():
+    from dela import config, hb_config
+    from dela.channels.config import load as load_channels
+    return {
+        "model": {
+            "name": config.NAME,
+            "model": config.MODEL,
+            "base_url": config.BASE_URL,
+            "thinking_level": config.THINKING_LEVEL or "(off)",
+        },
+        "voice": {
+            "whisper_model": config.WHISPER_MODEL,
+            "whisper_device": config.WHISPER_DEVICE,
+            "whisper_compute": config.WHISPER_COMPUTE,
+            "piper_voice": config.PIPER_VOICE,
+            "vad_aggressiveness": config.VAD_AGGRESSIVENESS,
+        },
+        "compaction": {
+            "threshold_chars": config.COMPACTION_THRESHOLD_CHARS,
+            "keep_recent_chars": config.COMPACTION_KEEP_RECENT_CHARS,
+        },
+        "tracing": {
+            "provider": config.TRACING_PROVIDER or "(disabled)",
+            "project": config.TRACING_PROJECT,
+        },
+        "heartbeat": hb_config.load(),
+        "channels": load_channels() if load_channels else {},
+        "runtime": {
+            "python_version": sys.version.split()[0],
+            "tools_count": len(registry.all()),
+            "agents_count": len(__import__('dela.agents', fromlist=['list_agents']).list_agents()),
+        },
+    }
+
+@app.put("/api/settings/heartbeat")
+def api_update_heartbeat_setting(body: dict):
+    from dela import hb_config
+    import json as _json
+    path = hb_config.path()
+    current = hb_config.load()
+    current.update(body)
+    path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
+    return {"ok": True, "config": current}
+
+@app.put("/api/settings/env")
+def api_update_env_setting(body: dict):
+    """Update a .env variable. Requires server restart to take effect."""
+    key = body.get("key", "")
+    value = body.get("value", "")
+    if not key or not key.startswith("DELA_"):
+        return {"ok": False, "error": "Key must start with DELA_"}
+    env_path = Path(__file__).resolve().parent.parent / ".env"
+    if not env_path.exists():
+        return {"ok": False, "error": ".env file not found"}
+    lines = env_path.read_text(encoding="utf-8").splitlines()
+    found = False
+    new_lines = []
+    for line in lines:
+        if line.startswith(f"{key}="):
+            new_lines.append(f"{key}={value}")
+            found = True
+        else:
+            new_lines.append(line)
+    if not found:
+        new_lines.append(f"{key}={value}")
+    env_path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    return {"ok": True, "key": key, "note": "Restart required for changes to take effect."}
 
 
 @app.put("/api/memory/{fact_id}")
