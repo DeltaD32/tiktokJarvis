@@ -94,9 +94,18 @@ A workflow is a named sequence of steps. Each step has:
 
 ## Available agents for workflow steps
 
-- researcher: web research, URL fetching, host checking, summarization
-- presenter: presentation design, PPT generation, style cloning
-- secretary: project coordination, blackboard management, conflict resolution
+- **researcher**: web research, URL fetching, host checking, summarization, fact-finding
+- **presenter**: presentation design, PPT generation, style cloning, slide creation
+- **secretary**: project coordination, blackboard management, conflict resolution, task tracking
+- **workflow_designer**: workflow brainstorming, design, and refinement (this agent — use for meta-workflows that design other workflows)
+- **system_expert**: codebase inspection, architecture advice, code implementation, security analysis, feature building
+
+Choose the right agent for each step:
+- Need web research or data gathering? → researcher
+- Need slides or a presentation? → presenter
+- Need coordination, scheduling, or multi-agent orchestration? → secretary
+- Need to inspect or modify Dela's own codebase? → system_expert
+- Need to design a sub-workflow? → workflow_designer
 
 ## Output format
 

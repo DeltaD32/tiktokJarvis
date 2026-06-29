@@ -245,7 +245,7 @@ A durable, human-readable JSON store of small named facts. Loaded into the syste
 A background loop that wakes on an interval, runs scheduled checks, and files noteworthy results to a noticeboard.
 
 - **Loop:** `dela/heartbeat.py`
-- **Checks (5):** `systems_health`, `tasks_due`, `blackboard_cleanup`, `scheduled_workflows`, `security_scan`
+- **Checks (6):** `systems_health`, `tasks_due`, `blackboard_cleanup`, `scheduled_workflows`, `security_scan`, `vuln_kb_refresh`
 - **Config:** `heartbeat_config.json` — intervals, targets, quiet hours
 
 ### Tier 6 — The Rails (Safety)
@@ -657,7 +657,8 @@ The heartbeat is a background thread that runs independently of the conversation
 | `tasks_due` | 300s | Scans open tasks for overdue/due-soon |
 | `blackboard_cleanup` | 600s | Distills and archives completed blackboards |
 | `scheduled_workflows` | 300s | Runs due scheduled workflows |
-| `security_scan` | 3600s | Runs the security self-audit |
+| `security_scan` | 3600s | Runs the security self-audit (9 categories incl. vuln KB) |
+| `vuln_kb_refresh` | 86400s | Refreshes vuln KB checklist from OWASP/CWE/CISA (daily) |
 
 ### Notice Severities
 
@@ -798,7 +799,7 @@ tiktokJarvis/
 ├── .env.example                # Template for .env
 ├── start_dela.py               # One-command startup with preflight
 ├── requirements.txt            # Python dependencies
-├── heartbeat_config.json       # 5 heartbeat checks
+├── heartbeat_config.json       # 6 heartbeat checks
 ├── README.md                   # This file
 ├── AGENT.md                    # Original build spec
 ├── ROADMAP.md                  # 6-step roadmap (all completed)
@@ -814,6 +815,7 @@ tiktokJarvis/
 │   ├── profiles.py             # Personal + work profile definitions
 │   ├── security.py             # Security self-audit engine (9 categories)
 │   ├── vuln_kb.py              # Vulnerability knowledge base (OWASP LLM + CWE Top 25)
+│   ├── model_router.py         # Auto-selects model by task complexity (fast/default/premium)
 │   ├── agent_status.py         # Agent ready/busy/error tracker
 │   ├── gate.py                 # Confirmation gate
 │   ├── audit.py                # Audit trail + cost tally
@@ -821,7 +823,7 @@ tiktokJarvis/
 │   ├── noticeboard.py          # Noticeboard
 │   ├── schedule.py             # Persisted heartbeat schedule
 │   ├── heartbeat.py            # Heartbeat background loop
-│   ├── checks.py               # 5 scheduled checks
+│   ├── checks.py               # 6 scheduled checks
 │   ├── hb_config.py            # Heartbeat config loader
 │   ├── stt.py                  # STT seam (faster-whisper, reads live_config)
 │   ├── tts.py                  # TTS seam (Piper, synthesize_wav for web)
@@ -1093,7 +1095,7 @@ MCP server tools are dynamically loaded from configured MCP servers. They appear
 
 ## REST API Reference
 
-The FastAPI server (`dela/server.py`) exposes 34 REST endpoints + 1 WebSocket:
+The FastAPI server (`dela/server.py`) exposes 40 REST endpoints + 1 WebSocket:
 
 ### Conversation & State
 | Endpoint | Method | Description |
@@ -1161,6 +1163,25 @@ The FastAPI server (`dela/server.py`) exposes 34 REST endpoints + 1 WebSocket:
 | `/api/settings/live` | GET | All live settings |
 | `/api/settings/live` | PUT | Update a live setting (no restart) |
 | `/api/settings/live/{key}` | DELETE | Reset a live setting to default |
+
+### Workflows
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/workflows` | GET | List all saved workflows |
+| `/api/workflows` | POST | Save a new workflow definition |
+| `/api/workflows/{name}` | GET | Get a workflow's full definition |
+| `/api/workflows/{name}` | DELETE | Delete a workflow |
+| `/api/workflows/{name}/run` | POST | Execute a workflow (dispatches agents via DAG scheduler) |
+
+### Security + Model Router
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/security` | GET | Last scan results (with priority P0-P4) |
+| `/api/security/scan` | POST | Run a new security scan |
+| `/api/security/fix` | POST | Dispatch system_expert agent to analyze/fix a finding |
+| `/api/vuln-kb` | GET | Vulnerability KB checklist (OWASP + CWE) |
+| `/api/vuln-kb/refresh` | POST | Fetch fresh checklist from whitelisted sources |
+| `/api/model-router/classify` | GET | Classify text complexity and show routing decision |
 
 ---
 

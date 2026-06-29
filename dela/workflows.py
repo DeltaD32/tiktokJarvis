@@ -157,7 +157,7 @@ def execute_workflow(name: str, input_data: dict | None = None) -> dict[str, Any
     def _runner(task: TaskSpec) -> str:
         soul = get_agent(task.agent)
         if soul is None:
-            return f"No agent named '{task.agent}'. Available agents: researcher, presenter, secretary."
+            return f"No agent named '{task.agent}'. Available agents: researcher, presenter, secretary, workflow_designer, system_expert."
 
         # Inject input data into the task description if provided
         task_desc = task.description

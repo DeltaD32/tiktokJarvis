@@ -372,6 +372,101 @@ def api_vuln_kb_refresh():
     from dela.vuln_kb import refresh
     return refresh()
 
+@app.post("/api/security/fix")
+def api_security_fix(req: dict):
+    """Dispatch the system_expert agent to analyze a security finding and recommend/implement a fix."""
+    finding_title = req.get("finding_title", "")
+    finding_detail = req.get("finding_detail", "")
+    finding_category = req.get("finding_category", "")
+    finding_priority = req.get("finding_priority", "")
+    auto_apply = req.get("auto_apply", False)
+
+    if not finding_title:
+        return {"error": "finding_title is required"}
+
+    from dela.agents import get_agent
+    from dela.brain import run_subagent
+    from dela.agent_status import mark_busy, mark_ready, mark_error
+
+    soul = get_agent("system_expert")
+    if soul is None:
+        return {"error": "system_expert agent not available"}
+
+    task = (
+        f"SECURITY FINDING TO FIX:\n"
+        f"  Title: {finding_title}\n"
+        f"  Category: {finding_category}\n"
+        f"  Priority: {finding_priority}\n"
+        f"  Detail: {finding_detail}\n\n"
+        f"Analyze this security finding in Dela's codebase. Use run_code to inspect the relevant files. "
+        f"Then {'implement the fix directly' if auto_apply else 'recommend a specific fix with code changes'}. "
+        f"Identify the exact file(s) and line(s) that need to change, explain the vulnerability, "
+        f"and provide the patched code. Follow Dela's patterns: one module per capability, "
+        f"errors as results, confirmation gate on consequential changes."
+    )
+
+    mark_busy("system_expert", f"Security fix: {finding_title[:60]}")
+    try:
+        prompt = soul.build_prompt()
+        result = run_subagent(
+            agent_name="system_expert",
+            task=task,
+            system_prompt_text=prompt,
+            tool_whitelist=soul.tool_whitelist,
+        )
+        mark_ready("system_expert")
+        return {"result": result, "finding": finding_title}
+    except Exception as e:
+        mark_error("system_expert", str(e))
+        return {"error": str(e)}
+
+
+# ── Workflow endpoints ────────────────────────────────────────────────────────
+
+@app.get("/api/workflows")
+def api_list_workflows():
+    from dela.workflows import list_workflows
+    return list_workflows()
+
+@app.get("/api/workflows/{name}")
+def api_get_workflow(name: str):
+    from dela.workflows import load_workflow
+    wf = load_workflow(name)
+    if wf is None:
+        return {"error": f"Workflow '{name}' not found"}
+    return wf
+
+@app.post("/api/workflows")
+def api_save_workflow(req: dict):
+    from dela.workflows import save_workflow
+    name = save_workflow(req)
+    return {"name": name, "steps": len(req.get("steps", []))}
+
+@app.delete("/api/workflows/{name}")
+def api_delete_workflow(name: str):
+    from dela.workflows import delete_workflow
+    if delete_workflow(name):
+        return {"deleted": name}
+    return {"error": f"Workflow '{name}' not found"}
+
+@app.post("/api/workflows/{name}/run")
+def api_run_workflow(name: str, req: dict = None):
+    from dela.workflows import execute_workflow
+    result = execute_workflow(name, req or {})
+    return result
+
+@app.get("/api/model-router/classify")
+def api_model_router_classify(text: str = ""):
+    from dela.model_router import get_routing_info
+    from dela import live_config
+    if not text:
+        return {"error": "Provide 'text' query parameter"}
+    info = get_routing_info(text)
+    info["router_enabled"] = live_config.get("model_router_enabled", False)
+    info["fast_model"] = live_config.get("model_fast", "")
+    info["premium_model"] = live_config.get("model_premium", "")
+    return info
+
 
 # ── Settings endpoints ────────────────────────────────────────────────────────
 

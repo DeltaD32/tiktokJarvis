@@ -168,6 +168,40 @@ def _check_security_scan(params: dict[str, Any]) -> dict | None:
     return None
 
 
+def _check_vuln_kb_refresh(params: dict[str, Any]) -> dict | None:
+    """Refresh the vulnerability knowledge base from whitelisted sources.
+
+    Periodically fetches fresh checklists from OWASP, CWE/MITRE, and CISA
+    to keep the security scanner's checklist up-to-date. Only connects to
+    whitelisted domains over HTTPS. Files a notice if the refresh found
+    new items or encountered errors.
+    """
+    from dela.vuln_kb import refresh, get_kb_info
+
+    old_info = get_kb_info()
+    old_count = old_info.get("item_count", 0)
+
+    result = refresh()
+    new_info = get_kb_info()
+    new_count = new_info.get("item_count", 0)
+
+    if result.get("errors") and not result.get("fetched_count"):
+        return {
+            "source": "vuln_kb_refresh",
+            "message": f"Vuln KB refresh failed: {'; '.join(result['errors'][:2])}",
+            "severity": noticeboard.ATTENTION,
+        }
+
+    if new_count != old_count:
+        return {
+            "source": "vuln_kb_refresh",
+            "message": f"Vuln KB updated: {old_count} -> {new_count} checklist items.",
+            "severity": noticeboard.INFO,
+        }
+
+    return None  # quiet if nothing changed
+
+
 # Registry of check name -> function.
 CHECKS: dict[str, Any] = {
     "systems_health": _check_systems_health,
@@ -175,4 +209,5 @@ CHECKS: dict[str, Any] = {
     "blackboard_cleanup": _check_blackboard_cleanup,
     "scheduled_workflows": _check_scheduled_workflows,
     "security_scan": _check_security_scan,
+    "vuln_kb_refresh": _check_vuln_kb_refresh,
 }

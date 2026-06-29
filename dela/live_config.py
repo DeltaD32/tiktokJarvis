@@ -50,6 +50,9 @@ LIVE_SETTINGS = {
     "whisper_device": str,
     "piper_voice": str,
     "vad_aggressiveness": int,
+    "model_router_enabled": str,  # "true"/"false" stored as string
+    "model_fast": str,            # model name for fast tier
+    "model_premium": str,         # model name for premium tier
 }
 
 # Settings that require restart

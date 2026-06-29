@@ -18,6 +18,7 @@ import { TasksPanel }           from './components/panels/TasksPanel'
 import { SecurityPanel }        from './components/panels/SecurityPanel'
 import { SettingsPanel }        from './components/panels/SettingsPanel'
 import { AnalyticsPanel }       from './components/panels/AnalyticsPanel'
+import { WorkflowDesignerPanel } from './components/panels/WorkflowDesignerPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
 import { useVoiceRecorder }     from './hooks/useVoiceRecorder'
 import { useVoiceTTS }          from './hooks/useVoiceTTS'
@@ -244,6 +245,7 @@ export default function App() {
       <div style={{ position: 'absolute', top: 14, right: 24, zIndex: 7, display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 320 }}>
         <button className="data-btn" onClick={() => openLocalPanel('analytics')}>ANALYTICS</button>
         <button className="data-btn" onClick={() => openLocalPanel('tools')}>TOOLS</button>
+        <button className="data-btn" onClick={() => openLocalPanel('workflows')}>WORKFLOWS</button>
         <button className="data-btn" onClick={() => openLocalPanel('notices')}>NOTICES{noticeCount > 0 ? ` (${noticeCount})` : ''}</button>
         <button className="data-btn" onClick={() => openLocalPanel('settings')}>SETTINGS</button>
         <button className="data-btn" onClick={() => openLocalPanel('security')}>SECURITY</button>
@@ -469,6 +471,9 @@ export default function App() {
         )}
         {panel === 'analytics' && (
           <AnalyticsPanel key="analytics" onClose={handleClose} message={panelMessage} />
+        )}
+        {panel === 'workflows' && (
+          <WorkflowDesignerPanel key="workflows" onClose={handleClose} message={panelMessage} />
         )}
       </AnimatePresence>
 

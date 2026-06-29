@@ -9,6 +9,8 @@ export function SecurityPanel({ onClose, message }) {
   const [kb, setKb]             = useState(null)
   const [kbLoading, setKbLoading] = useState(false)
   const [kbRefreshing, setKbRefreshing] = useState(false)
+  const [fixingId, setFixingId] = useState(null)
+  const [fixResult, setFixResult] = useState(null)
 
   const refresh = () => {
     fetch('/api/security')
@@ -41,6 +43,25 @@ export function SecurityPanel({ onClose, message }) {
       .catch(() => setKbRefreshing(false))
   }
 
+  const requestFix = (finding, autoApply = false) => {
+    setFixingId(finding.title)
+    setFixResult(null)
+    fetch('/api/security/fix', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        finding_title: finding.title,
+        finding_detail: finding.detail,
+        finding_category: finding.category,
+        finding_priority: finding.priority,
+        auto_apply: autoApply,
+      }),
+    })
+      .then(r => r.json())
+      .then(data => { setFixingId(null); setFixResult(data) })
+      .catch(() => setFixingId(null))
+  }
+
   useEffect(() => { refresh() }, [])
   useEffect(() => { if (tab === 'checklist' && !kb) fetchKb() }, [tab, kb])
 
@@ -58,7 +79,29 @@ export function SecurityPanel({ onClose, message }) {
     info:     'badge-open',
   })[s] || 'badge-open'
 
+  const priorityColor = (p) => ({
+    P0: 'var(--red)',
+    P1: 'var(--red)',
+    P2: 'var(--amber)',
+    P3: 'var(--amber)',
+    P4: 'var(--text-dim)',
+  })[p] || 'var(--text-dim)'
+
+  const priorityLabel = (p) => ({
+    P0: 'CRITICAL',
+    P1: 'HIGH',
+    P2: 'MEDIUM',
+    P3: 'LOW',
+    P4: 'INFO',
+  })[p] || 'INFO'
+
   const scoreColor = report?.score >= 90 ? 'var(--green)' : report?.score >= 70 ? 'var(--amber)' : 'var(--red)'
+
+  // Sort findings by priority for display
+  const sortedFindings = report?.findings ? [...report.findings].sort((a, b) => {
+    const order = { P0: 0, P1: 1, P2: 2, P3: 3, P4: 4 }
+    return (order[a.priority] || 5) - (order[b.priority] || 5)
+  }) : []
 
   // Map KB items to scan findings by check_id match
   const kbFindings = report?.findings?.filter(f => f.category === 'vuln_kb') || []
@@ -129,28 +172,81 @@ export function SecurityPanel({ onClose, message }) {
                 </button>
               </div>
 
-              {/* Findings */}
-              {report.findings.map((f, i) => (
-                <div key={i} className="panel-item" style={{ borderLeft: `3px solid ${sevColor(f.severity)}` }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                    <span className="panel-item-title" style={{ fontSize: 12 }}>{f.title}</span>
-                    <span className={`badge ${sevBadge(f.severity)}`}>{f.severity}</span>
+              {/* Fix result modal */}
+              {fixResult && (
+                <div style={{ marginBottom: 12, padding: 14, borderRadius: 10, background: 'rgba(0,0,0,0.4)', border: '1px solid var(--accent)' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                    <span style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--accent)', fontFamily: "'JetBrains Mono', monospace" }}>
+                      AGENT FIX RECOMMENDATION
+                    </span>
+                    <button className="data-btn" onClick={() => setFixResult(null)}>CLOSE</button>
                   </div>
-                  <div className="panel-item-meta" style={{ fontSize: 10 }}>
-                    <span style={{ color: 'var(--text-dim)' }}>[{f.category}]</span>
-                    {f.detail && <span style={{ marginLeft: 6 }}>{f.detail}</span>}
+                  <div style={{ fontSize: 11, color: 'var(--text-2)', whiteSpace: 'pre-wrap', lineHeight: 1.5, maxHeight: 400, overflow: 'auto' }}>
+                    {fixResult.result || fixResult.error || 'No result'}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* Findings — sorted by priority */}
+              {sortedFindings.map((f, i) => {
+                const isActionable = f.severity === 'critical' || f.severity === 'warning'
+                const isFixing = fixingId === f.title
+                return (
+                  <div key={i} className="panel-item" style={{ borderLeft: `3px solid ${sevColor(f.severity)}` }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span className="panel-item-title" style={{ fontSize: 12 }}>{f.title}</span>
+                        <span style={{
+                          fontSize: 8,
+                          fontWeight: 700,
+                          color: priorityColor(f.priority),
+                          border: `1px solid ${priorityColor(f.priority)}`,
+                          borderRadius: 3,
+                          padding: '1px 4px',
+                          fontFamily: "'JetBrains Mono', monospace",
+                        }}>
+                          {f.priority}
+                        </span>
+                      </div>
+                      <span className={`badge ${sevBadge(f.severity)}`}>{f.severity}</span>
+                    </div>
+                    <div className="panel-item-meta" style={{ fontSize: 10 }}>
+                      <span style={{ color: 'var(--text-dim)' }}>[{f.category}]</span>
+                      {f.detail && <span style={{ marginLeft: 6 }}>{f.detail}</span>}
+                    </div>
+                    {isActionable && (
+                      <div style={{ marginTop: 6, display: 'flex', gap: 4 }}>
+                        <button
+                          className="data-btn"
+                          onClick={() => requestFix(f, false)}
+                          disabled={isFixing}
+                          style={isFixing ? { opacity: 0.5 } : { borderColor: 'var(--accent)', color: 'var(--accent)' }}
+                        >
+                          {isFixing ? 'ANALYZING...' : 'RECOMMEND FIX'}
+                        </button>
+                        <button
+                          className="data-btn"
+                          onClick={() => requestFix(f, true)}
+                          disabled={isFixing}
+                          style={isFixing ? { opacity: 0.5 } : { borderColor: 'var(--amber)', color: 'var(--amber)' }}
+                        >
+                          AUTO-FIX
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
 
               {/* Auto-scan info */}
               <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)' }}>
                 <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-dim)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>
-                  AUTO-SCAN
+                  AUTO-SCAN + VULN KB REFRESH
                 </div>
                 <div style={{ fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
-                  The heartbeat runs a security scan periodically. Configure it in Settings &gt; Heartbeat.
-                  Critical findings generate urgent notices automatically.
+                  The heartbeat runs a security scan hourly and refreshes the vuln KB checklist
+                  from OWASP/CWE/CISA daily. Critical findings generate urgent notices.
+                  Findings are prioritized P0-P4 by severity and impact.
                 </div>
               </div>
             </>
@@ -258,7 +354,7 @@ export function SecurityPanel({ onClose, message }) {
                       ))}
                     </div>
                     <div style={{ fontSize: 9, color: 'var(--text-dim)', marginTop: 8 }}>
-                      Only these domains are contacted during KB refresh. All fetches use HTTPS.
+                      Only these domains are contacted during KB refresh. Auto-refreshed daily by the heartbeat.
                     </div>
                   </div>
                 </>

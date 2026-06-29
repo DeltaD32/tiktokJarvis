@@ -48,8 +48,15 @@ def respond(history: list[Message], user_text: str, model: str | None = None) ->
     On provider failure, yields a clean human message instead of raising.
 
     If model is provided, overrides the configured model for this turn only.
+    If model is None, the model router may select a different model based on
+    task complexity (if enabled in live_config).
     """
     history.append({"role": "user", "content": user_text})
+
+    # Model routing: auto-select model based on task complexity
+    if model is None:
+        from dela.model_router import route_model
+        model = route_model(user_text, history)
 
     try:
         yield from _run_turn(history, model=model)

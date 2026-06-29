@@ -25,14 +25,15 @@ def _broadcast(payload: dict) -> None:
         "Use 'tasks' to show the task list, 'notices' for proactive notices, "
         "'audit' for the recent activity log, 'memory' for stored facts, "
         "'tools' for the tool browser, 'analytics' for usage stats, "
-        "'security' for the security audit, or 'state' for the state browser."
+        "'security' for the security audit, 'state' for the state browser, "
+        "or 'workflows' for the workflow designer."
     ),
     parameters={
         "type": "object",
         "properties": {
             "panel": {
                 "type": "string",
-                "enum": ["tasks", "notices", "audit", "memory", "tools", "analytics", "security", "state"],
+                "enum": ["tasks", "notices", "audit", "memory", "tools", "analytics", "security", "state", "workflows"],
                 "description": "Which panel to open.",
             },
             "message": {

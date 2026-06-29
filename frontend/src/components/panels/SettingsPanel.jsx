@@ -93,6 +93,7 @@ export function SettingsPanel({ onClose, message }) {
   const sections = [
     { id: 'profile',  label: 'PROFILE' },
     { id: 'general',  label: 'GENERAL' },
+    { id: 'router',   label: 'ROUTER' },
     { id: 'voice',    label: 'VOICE' },
     { id: 'theme',    label: 'THEME' },
     { id: 'heartbeat', label: 'HEARTBEAT' },
@@ -264,6 +265,48 @@ export function SettingsPanel({ onClose, message }) {
             <Field label="TOOLS" value={`${settings.runtime.tools_count} registered`} />
             <Field label="AGENTS" value={`${settings.runtime.agents_count} registered`} />
             <Field label="PYTHON" value={settings.runtime.python_version} />
+          </div>
+        </>
+      )}
+
+      {/* ROUTER */}
+      {!loading && section === 'router' && settings && (
+        <>
+          <div style={{ fontSize: 10, letterSpacing: '0.14em', color: 'var(--text-dim)', marginBottom: 12, fontFamily: "'JetBrains Mono', monospace" }}>
+            MODEL ROUTER
+          </div>
+          <div className="settings-grid">
+            <LiveField
+              label="ROUTER ENABLED"
+              settingKey="model_router_enabled"
+              value={settings.live?.model_router_enabled || 'false'}
+              options={[
+                { value: 'true', label: 'ON — auto-select model by complexity' },
+                { value: 'false', label: 'OFF — use default model for all' },
+              ]}
+              hint="When ON, simple tasks use the fast model, complex tasks use premium."
+            />
+            <LiveField
+              label="FAST MODEL"
+              settingKey="model_fast"
+              value={settings.live?.model_fast || settings.model}
+              hint="Cheap model for trivial tasks (math, formatting, lookups)"
+            />
+            <LiveField
+              label="PREMIUM MODEL"
+              settingKey="model_premium"
+              value={settings.live?.model_premium || settings.model}
+              hint="Expensive model for complex tasks (coding, architecture, analysis)"
+            />
+          </div>
+          <div style={{ marginTop: 16, padding: 12, borderRadius: 10, background: 'rgba(0,240,255,0.05)', border: '1px solid rgba(0,240,255,0.2)', fontSize: 11, color: 'var(--text-3)', lineHeight: 1.5 }}>
+            <div style={{ color: 'var(--accent)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: '0.1em' }}>
+              HOW IT WORKS
+            </div>
+            The router classifies each request by complexity using signals like input length,
+            code blocks, keywords, and tool usage. Trivial tasks (e.g. "what is 2+2") route to
+            the fast model. Complex tasks (e.g. "implement a security scanner") route to premium.
+            Everything else uses the default model. This saves tokens and cost on simple operations.
           </div>
         </>
       )}

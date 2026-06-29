@@ -37,6 +37,7 @@ class Finding:
     category: str
     title: str
     detail: str
+    priority: str = ""  # "P0" | "P1" | "P2" | "P3" | "P4" — set by _prioritize_findings
 
     def to_dict(self) -> dict:
         return {
@@ -44,6 +45,7 @@ class Finding:
             "category": self.category,
             "title": self.title,
             "detail": self.detail,
+            "priority": self.priority or "P4",
         }
 
 
@@ -619,11 +621,14 @@ def run_full_scan() -> dict[str, Any]:
     all_findings += _scan_profile()
     all_findings += _scan_vuln_kb()
 
-    findings_dict = [f.to_dict() for f in all_findings]
-    critical = sum(1 for f in all_findings if f.severity == "critical")
-    warning = sum(1 for f in all_findings if f.severity == "warning")
-    ok = sum(1 for f in all_findings if f.severity == "ok")
-    info = sum(1 for f in all_findings if f.severity == "info")
+    # Prioritize findings
+    prioritized = _prioritize_findings(all_findings)
+
+    findings_dict = [f.to_dict() for f in prioritized]
+    critical = sum(1 for f in prioritized if f.severity == "critical")
+    warning = sum(1 for f in prioritized if f.severity == "warning")
+    ok = sum(1 for f in prioritized if f.severity == "ok")
+    info = sum(1 for f in prioritized if f.severity == "info")
 
     _CHECKS_RUN = findings_dict
 
@@ -637,11 +642,45 @@ def run_full_scan() -> dict[str, Any]:
             "warning": warning,
             "ok": ok,
             "info": info,
-            "total": len(all_findings),
+            "total": len(prioritized),
         },
         "findings": findings_dict,
         "status": "critical" if critical > 0 else "warning" if warning > 0 else "secure",
     }
+
+
+# Priority levels for findings
+_PRIORITY_ORDER = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "P4": 4, None: 5}
+
+# Categories that are more dangerous if they have findings
+_HIGH_IMPACT_CATEGORIES = {"secrets", "gate", "injection", "sandbox", "vuln_kb"}
+_MEDIUM_IMPACT_CATEGORIES = {"network", "deps", "profile"}
+
+
+def _prioritize_findings(findings: list[Finding]) -> list[Finding]:
+    """Sort findings by priority: P0 (critical+exploitable) → P4 (info).
+
+    Priority assignment:
+      P0: Critical + high-impact category (secrets, injection, sandbox)
+      P1: Critical + other category
+      P2: Warning + high-impact category
+      P3: Warning + other category
+      P4: Info / OK
+    """
+    def get_priority(f: Finding) -> str:
+        if f.severity == "critical":
+            return "P0" if f.category in _HIGH_IMPACT_CATEGORIES else "P1"
+        elif f.severity == "warning":
+            return "P2" if f.category in _HIGH_IMPACT_CATEGORIES else "P3"
+        else:
+            return "P4"
+
+    def sort_key(f: Finding) -> tuple:
+        priority = get_priority(f)
+        f.priority = priority
+        return (_PRIORITY_ORDER[priority], f.severity != "critical", f.severity != "warning")
+
+    return sorted(findings, key=sort_key)
 
 
 def last_scan() -> dict[str, Any]:
