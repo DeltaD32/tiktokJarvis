@@ -9,7 +9,6 @@ import { HitlGate }            from './components/HitlGate'
 import { HiveWindow }          from './components/HiveWindow'
 import { StreamWindow }        from './components/StreamWindow'
 import { SandboxWindow }       from './components/SandboxWindow'
-import { HoloPanel }           from './components/HoloPanel'
 import { MemoryPanel }         from './components/panels/MemoryPanel'
 import { StateBrowserPanel }   from './components/panels/StateBrowserPanel'
 import { ToolBrowserPanel }    from './components/panels/ToolBrowserPanel'
@@ -260,42 +259,31 @@ export default function App() {
         />
       )}
 
-      {/* Slide-in data panels */}
+      {/* Slide-in data panels (each panel wraps itself in HoloPanel) */}
       <AnimatePresence>
         {panel === 'memory' && (
-          <HoloPanel key="memory" title="Memory" message={panelMessage} onClose={handleClose}>
-            <MemoryPanel onClose={handleClose} message={panelMessage} />
-          </HoloPanel>
+          <MemoryPanel key="memory" onClose={handleClose} message={panelMessage} />
         )}
         {panel === 'state' && (
-          <HoloPanel key="state" title="State Browser" message={panelMessage} onClose={handleClose}>
-            <StateBrowserPanel onClose={handleClose} message={panelMessage} />
-          </HoloPanel>
+          <StateBrowserPanel key="state" onClose={handleClose} message={panelMessage} />
         )}
         {panel === 'tools' && (
-          <HoloPanel key="tools" title="Tool Browser" message={panelMessage} onClose={handleClose}>
-            <ToolBrowserPanel onClose={handleClose} message={panelMessage} />
-          </HoloPanel>
+          <ToolBrowserPanel key="tools" onClose={handleClose} message={panelMessage} />
         )}
         {panel === 'audit' && (
-          <HoloPanel key="audit" title="Audit Log" message={panelMessage} onClose={handleClose}>
-            <AuditPanel onClose={handleClose} message={panelMessage} />
-          </HoloPanel>
+          <AuditPanel key="audit" onClose={handleClose} message={panelMessage} />
         )}
         {panel === 'notices' && (
-          <HoloPanel key="notices" title="Notices" message={panelMessage} onClose={handleClose}>
-            <NoticesPanel
-              onClose={handleClose}
-              message={panelMessage}
-              notices={notices}
-              onDismiss={dismissNotice}
-            />
-          </HoloPanel>
+          <NoticesPanel
+            key="notices"
+            onClose={handleClose}
+            message={panelMessage}
+            notices={notices}
+            onDismiss={dismissNotice}
+          />
         )}
         {panel === 'tasks' && (
-          <HoloPanel key="tasks" title="Tasks" message={panelMessage} onClose={handleClose}>
-            <TasksPanel onClose={handleClose} message={panelMessage} />
-          </HoloPanel>
+          <TasksPanel key="tasks" onClose={handleClose} message={panelMessage} />
         )}
       </AnimatePresence>
 

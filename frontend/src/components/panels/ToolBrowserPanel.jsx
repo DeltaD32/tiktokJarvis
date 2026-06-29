@@ -85,12 +85,12 @@ export function ToolBrowserPanel({ onClose, message }) {
       {/* Tools tab */}
       {!loading && tab === 'tools' && (
         <>
-          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--amber)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--amber)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>
             REQUIRES CONFIRMATION ({confirmTools.filter(matches).length})
           </div>
           {confirmTools.filter(matches).map(t => <ToolRow key={t.name} t={t} />)}
 
-          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--green)', marginTop: 16, marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--green)', marginTop: 16, marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>
             SAFE / READ-ONLY ({safeTools.filter(matches).length})
           </div>
           {safeTools.filter(matches).map(t => <ToolRow key={t.name} t={t} />)}
@@ -123,7 +123,7 @@ export function ToolBrowserPanel({ onClose, message }) {
           {selectedAgent && (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-                <span style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--cyan)', fontFamily: 'Orbitron, monospace' }}>
+                <span style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
                   {selectedAgent.name.toUpperCase()}
                 </span>
                 <button className="icon-btn" onClick={() => setSelAgent(null)}>back</button>
@@ -132,7 +132,7 @@ export function ToolBrowserPanel({ onClose, message }) {
                 <div className="panel-item-meta" style={{ fontSize: 11, lineHeight: 1.4, marginBottom: 12 }}>
                   {selectedAgent.description}
                 </div>
-                <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 6, fontFamily: 'Orbitron, monospace' }}>
+                <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>
                   TOOL WHITELIST
                 </div>
                 {selectedAgent.tools ? (

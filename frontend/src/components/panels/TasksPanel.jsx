@@ -25,7 +25,7 @@ export function TasksPanel({ onClose, message }) {
 
       {open.length > 0 && (
         <>
-          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'Orbitron, monospace' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: "'JetBrains Mono', monospace" }}>
             OPEN — {open.length}
           </div>
           {open.map(t => (
@@ -42,7 +42,7 @@ export function TasksPanel({ onClose, message }) {
 
       {done.length > 0 && (
         <>
-          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', margin: '16px 0 8px', fontFamily: 'Orbitron, monospace' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', margin: '16px 0 8px', fontFamily: "'JetBrains Mono', monospace" }}>
             COMPLETED — {done.length}
           </div>
           {done.map(t => (

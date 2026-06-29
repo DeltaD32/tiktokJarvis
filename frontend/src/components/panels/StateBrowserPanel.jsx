@@ -74,7 +74,7 @@ export function StateBrowserPanel({ onClose, message }) {
       {/* Search results */}
       {searchResults && (
         <div style={{ marginBottom: 16 }}>
-          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'Orbitron, monospace' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: "'JetBrains Mono', monospace" }}>
             SEARCH RESULTS ({searchResults.length})
           </div>
           {searchResults.length === 0 && <p className="panel-empty">No matches found.</p>}
@@ -92,7 +92,7 @@ export function StateBrowserPanel({ onClose, message }) {
       {/* State type list */}
       {!selectedType && !searchResults && (
         <>
-          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: 'Orbitron, monospace' }}>
+          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: "'JetBrains Mono', monospace" }}>
             STATE TYPES
           </div>
           {stateTypes.map(t => (
@@ -111,7 +111,7 @@ export function StateBrowserPanel({ onClose, message }) {
       {selectedType && !selectedItem && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--cyan)', fontFamily: 'Orbitron, monospace' }}>
+            <span style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
               {selectedType.toUpperCase()}
             </span>
             <button className="icon-btn" onClick={() => { setSelectedType(null); setItems(null) }}>back</button>
@@ -157,7 +157,7 @@ export function StateBrowserPanel({ onClose, message }) {
       {selectedItem && (
         <>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <span style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--cyan)', fontFamily: 'Orbitron, monospace' }}>
+            <span style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--cyan)', fontFamily: "'JetBrains Mono', monospace" }}>
               ITEM DETAIL
             </span>
             <button className="icon-btn" onClick={() => setSelectedItem(null)}>back</button>
