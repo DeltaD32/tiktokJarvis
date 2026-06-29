@@ -34,3 +34,7 @@ empty_input.txt
 # Frontend
 node_modules/
 frontend/dist/
+
+# Stray files
+*.zip
+Bruce'sResearchRequests.md.txt
