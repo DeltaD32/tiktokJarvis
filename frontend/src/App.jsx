@@ -213,9 +213,46 @@ export default function App() {
   const handleSend = useCallback(() => {
     const text = input.trim()
     if (!text) return
+
+    // Slash commands
+    if (text.startsWith('/')) {
+      const [cmd, ...args] = text.slice(1).split(/\s+/)
+      const arg = args.join(' ')
+      switch (cmd) {
+        case 'help':
+          sendMessage('List all available slash commands and briefly explain each.')
+          break
+        case 'clear':
+          window.location.reload()
+          return
+        case 'voice':
+          if (arg === 'on') { setVoiceEnabled(true); break }
+          if (arg === 'off') { setVoiceEnabled(false); ttsStop(); break }
+          setVoiceEnabled(!voiceEnabled)
+          if (voiceEnabled) ttsStop()
+          break
+        case 'theme': {
+          const themes = ['jarvis','ultraviolet','solar','forest','crimson']
+          if (themes.includes(arg.toLowerCase())) { applyTheme(arg.toLowerCase()) }
+          else sendMessage(`Switch to the ${arg || 'jarvis'} theme.`)
+          break
+        }
+        case 'memory': openLocalPanel('memory'); break
+        case 'agents': openLocalPanel('agents'); break
+        case 'settings': openLocalPanel('settings'); break
+        case 'scan': sendMessage('Run a security scan and report findings.'); break
+        case 'tasks': openLocalPanel('projects'); break
+        case 'cost': sendMessage('What is the current session cost?'); break
+        default:
+          sendMessage(text)
+      }
+      setInput('')
+      return
+    }
+
     sendMessage(text)
     setInput('')
-  }, [input, sendMessage])
+  }, [input, sendMessage, voiceEnabled, ttsStop])
 
   const handleKey = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -368,50 +405,57 @@ export default function App() {
               </div>
             )
           })}
-          <div className="idle-center">
-            <div>
-              <div className="idle-logo">DELA</div>
-              <div className="idle-subtitle">all systems nominal — awaiting your directive</div>
-            </div>
-            <div className="idle-input-wrap">
-              <span className="idle-input-prompt">&gt;</span>
-              <input
-                id="idle-input"
-                className="idle-input"
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKey}
-                placeholder="Issue a directive — natural language or /command..."
-                autoFocus
-              />
-              <button
-                className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
-                onClick={handleVoiceToggle}
-                aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
-              >
-                {transcribing ? '...' : recording ? 'STOP' : 'MIC'}
-              </button>
-              <button type="button" className="execute-btn" onClick={handleSend}>EXECUTE</button>
-            </div>
-            {voiceError && (
-              <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)' }}>
-                Voice error: {voiceError}
+          <div className="idle-center" style={{ maxWidth: 500, margin: '0 auto' }}>
+            <div className="idle-chat-panel">
+              <div>
+                <div className="idle-logo">DELA</div>
+                <div className="idle-subtitle">all systems nominal — awaiting your directive</div>
               </div>
-            )}
-            <div className="chip-row">
-              <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
-              <button className="chip" onClick={() => { sendMessage('Search your memory for facts about me'); setInput('') }}>Search memory</button>
-              <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
-              <button
-                className={`chip ${voiceEnabled ? 'active' : ''}`}
-                onClick={() => {
-                  const next = !voiceEnabled
-                  setVoiceEnabled(next)
-                  if (!next) ttsStop()
-                }}
-              >
-                {voiceEnabled ? 'VOICE ON' : 'VOICE OFF'}
-              </button>
+              <div className="idle-input-wrap">
+                <span className="idle-input-prompt">&gt;</span>
+                <input
+                  id="idle-input"
+                  className="idle-input"
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={handleKey}
+                  placeholder="Type a message or /command..."
+                  autoFocus
+                />
+                <button
+                  className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
+                  onClick={handleVoiceToggle}
+                  aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
+                >
+                  {transcribing ? '...' : recording ? 'STOP' : 'MIC'}
+                </button>
+                <button type="button" className="execute-btn" onClick={handleSend}>EXECUTE</button>
+              </div>
+              {voiceError && (
+                <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)', marginTop: 6 }}>
+                  Voice error: {voiceError}
+                </div>
+              )}
+              <div className="idle-extras">
+                <div className="chip-row">
+                  <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
+                  <button className="chip" onClick={() => { sendMessage('Search your memory for facts about me'); setInput('') }}>Search memory</button>
+                  <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
+                  <button
+                    className={`chip ${voiceEnabled ? 'active' : ''}`}
+                    onClick={() => {
+                      const next = !voiceEnabled
+                      setVoiceEnabled(next)
+                      if (!next) ttsStop()
+                    }}
+                  >
+                    {voiceEnabled ? 'VOICE ON' : 'VOICE OFF'}
+                  </button>
+                </div>
+                <div style={{ fontSize: 9, color: 'var(--text-faint)', textAlign: 'center', marginTop: 6, fontFamily: "'JetBrains Mono', monospace", opacity: 0.5 }}>
+                  /help /clear /voice /theme /memory /settings /scan /tasks /cost
+                </div>
+              </div>
             </div>
             {/* Agent status summary — click AGENTS button for full roster */}
             <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 4 }}>

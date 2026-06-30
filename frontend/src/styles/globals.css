@@ -1140,3 +1140,26 @@ textarea.chat-input::placeholder, input.chat-input::placeholder { color: var(--t
   margin-right: 6px;
   opacity: 0.7;
 }
+
+/* Idle chat panel — compact on load, expands on hover */
+.idle-chat-panel {
+  transition: all 0.3s ease;
+}
+.idle-extras {
+  opacity: 0;
+  max-height: 0;
+  overflow: hidden;
+  transition: opacity 0.25s ease, max-height 0.35s ease;
+}
+.idle-chat-panel:hover .idle-extras,
+.idle-chat-panel:focus-within .idle-extras {
+  opacity: 1;
+  max-height: 80px;
+}
+.idle-chat-panel:hover .idle-input-wrap,
+.idle-chat-panel:focus-within .idle-input-wrap {
+  transform: scale(1.02);
+}
+.idle-input-wrap {
+  transition: transform 0.2s ease;
+}
