@@ -83,12 +83,10 @@ def _thinking_kwargs() -> dict:
         level = getattr(config, "THINKING_LEVEL", "").strip().lower()
     if level in ("low", "medium", "high"):
         kwargs["reasoning_effort"] = level
-    # Cap output length for faster responses — can be overridden via live_config
+    # max_tokens: only set if explicitly configured by user (some providers reject it)
     max_tok = live_config.get("max_tokens")
-    if max_tok:
+    if max_tok and str(max_tok) != "0":
         kwargs["max_tokens"] = int(max_tok)
-    elif not getattr(config, "MAX_TOKENS", None):
-        kwargs["max_tokens"] = 2048  # sensible default — prevents runaway responses
     return kwargs
 
 
