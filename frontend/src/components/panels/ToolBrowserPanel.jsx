@@ -9,20 +9,32 @@ function ToolAuditor({ tool, onClose }) {
   const runAudit = () => {
     setRunning(true)
     setResult(null)
-    // Audit runs as a brain conversation — ask system_expert to evaluate
-    // For now, show tool metadata as the "audit"
-    setTimeout(() => {
-      setResult({
-        score: tool.requires_confirmation ? 7 : 2,
-        findings: [
-          tool.requires_confirmation ? 'Requires user approval (consequential)' : 'Safe — read-only or reversible',
-          tool.param_count > 3 ? `Complex: ${tool.param_count} parameters — consider simplifying` : 'Simple parameter set',
-          tool.description.length > 120 ? 'Description is thorough' : 'Description could be more detailed'
-        ],
-        usability: tool.param_count <= 2 ? 5 : tool.param_count <= 4 ? 3 : 2
+    fetch('/api/audit/tool', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        name: tool.name,
+        description: tool.description || '',
+        parameters: tool.parameters || {},
+        requires_confirmation: tool.requires_confirmation || false,
+      }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          setResult({
+            score: data.scores.impact,
+            security: data.scores.security,
+            usability: data.scores.usability,
+            efficiency: data.scores.efficiency,
+            overall: data.overall,
+            grade: data.grade,
+            findings: data.findings.map(f => `${f.severity.toUpperCase()}: ${f.message}${f.suggestion ? ' — ' + f.suggestion : ''}`)
+          })
+        }
+        setRunning(false)
       })
-      setRunning(false)
-    }, 500)
+      .catch(() => setRunning(false))
   }
 
   return (
@@ -34,30 +46,57 @@ function ToolAuditor({ tool, onClose }) {
         <button className="icon-btn" onClick={onClose} style={{ fontSize: 9 }}>close</button>
       </div>
 
-      {/* Impact & usability scores */}
+      {/* Impact & scores */}
       <div style={{ display: 'flex', gap: 12, marginBottom: 10 }}>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: tool.requires_confirmation ? 'var(--red)' : 'var(--green)', fontFamily: "'JetBrains Mono', monospace" }}>
-            {tool.requires_confirmation ? 'HIGH' : 'LOW'}
-          </div>
-          <div style={{ fontSize: 8, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>IMPACT</div>
-        </div>
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)', fontFamily: "'JetBrains Mono', monospace" }}>
-            {tool.param_count || 0}
-          </div>
-          <div style={{ fontSize: 8, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>PARAMS</div>
-        </div>
-        <div style={{ flex: 1 }} />
-        <button
-          className="chip active"
-          onClick={runAudit}
-          disabled={running}
-          style={{ fontSize: 9, alignSelf: 'center' }}
-        >
-          {running ? 'Auditing...' : 'Run Audit'}
-        </button>
+        {result ? (
+          <>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: result.overall >= 7 ? 'var(--green)' : result.overall >= 5 ? 'var(--amber)' : 'var(--red)', fontFamily: "'JetBrains Mono', monospace" }}>
+                {result.grade}
+              </div>
+              <div style={{ fontSize: 8, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>GRADE</div>
+            </div>
+            {['security', 'usability', 'impact', 'efficiency'].map(k => (
+              <div key={k} style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 12, fontWeight: 600, color: result[k] >= 7 ? 'var(--green)' : result[k] >= 4 ? 'var(--amber)' : 'var(--red)', fontFamily: "'JetBrains Mono', monospace" }}>
+                  {result[k].toFixed(1)}
+                </div>
+                <div style={{ fontSize: 7, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>{k.slice(0, 3).toUpperCase()}</div>
+              </div>
+            ))}
+          </>
+        ) : (
+          <>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: tool.requires_confirmation ? 'var(--red)' : 'var(--green)', fontFamily: "'JetBrains Mono', monospace" }}>
+                {tool.requires_confirmation ? 'HIGH' : 'LOW'}
+              </div>
+              <div style={{ fontSize: 8, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>IMPACT</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: 'var(--accent)', fontFamily: "'JetBrains Mono', monospace" }}>
+                {tool.param_count || 0}
+              </div>
+              <div style={{ fontSize: 8, color: 'var(--text-dim)', letterSpacing: '0.1em' }}>PARAMS</div>
+            </div>
+            <div style={{ flex: 1 }} />
+            <button className="chip active" onClick={runAudit} disabled={running} style={{ fontSize: 9, alignSelf: 'center' }}>
+              {running ? 'Auditing...' : 'Run Audit'}
+            </button>
+          </>
+        )}
       </div>
+
+      {/* Show audit button if not yet run */}
+      {!result && (
+        <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+          <button className="chip active" onClick={runAudit} disabled={running} style={{ fontSize: 9 }}>
+            {running ? 'Auditing...' : 'Run Audit'}
+          </button>
+        </div>
+      )}
+
+      {/* Run audit button moved above */}
 
       {/* Parameters schema */}
       {tool.parameters?.properties && (
@@ -80,19 +119,17 @@ function ToolAuditor({ tool, onClose }) {
       {/* Audit results */}
       {result && (
         <div style={{ padding: '8px 10px', borderRadius: 6, background: 'rgba(0,0,0,0.2)', border: '1px solid var(--border)' }}>
-          <div style={{ display: 'flex', gap: 12, marginBottom: 6 }}>
-            <span style={{ fontSize: 10 }}>
-              Usability: {'★'.repeat(result.usability)}{'☆'.repeat(5 - result.usability)}
-            </span>
-            <span style={{ fontSize: 10, color: result.score >= 7 ? 'var(--red)' : result.score >= 4 ? 'var(--amber)' : 'var(--green)' }}>
-              Impact Score: {result.score}/10
-            </span>
+          <div style={{ fontSize: 10, letterSpacing: '0.1em', color: 'var(--text-dim)', marginBottom: 6, fontFamily: "'JetBrains Mono', monospace" }}>
+            FINDINGS ({result.findings.length})
           </div>
-          {result.findings.map((f, i) => (
-            <div key={i} style={{ fontSize: 10, color: 'var(--text)', marginBottom: 2 }}>
-              • {f}
-            </div>
-          ))}
+          {result.findings.map((f, i) => {
+            const sevColor = f.includes('CRITICAL') ? 'var(--red)' : f.includes('HIGH') ? 'var(--amber)' : f.includes('MEDIUM') ? 'var(--accent)' : 'var(--text-dim)'
+            return (
+              <div key={i} style={{ fontSize: 10, color: 'var(--text)', marginBottom: 3, paddingLeft: 8, borderLeft: `2px solid ${sevColor}` }}>
+                {f}
+              </div>
+            )
+          })}
         </div>
       )}
     </div>

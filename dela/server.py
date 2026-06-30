@@ -233,6 +233,52 @@ def api_analytics():
     return audit.analytics()
 
 
+@app.post("/api/audit/{asset_type}")
+def api_audit_asset(asset_type: str, body: dict):
+    """Audit a tool, agent, or workflow before deployment.
+    POST /api/audit/tool  {"name":"...", "description":"...", "parameters":{...}, "requires_confirmation":bool}
+    POST /api/audit/agent {"name":"...", "description":"...", "tools":[...]}
+    POST /api/audit/workflow {"name":"...", "description":"...", "steps":[...]}
+    """
+    from dela.auditor import audit_tool, audit_agent, audit_workflow
+
+    if asset_type == "tool":
+        report = audit_tool(
+            name=body.get("name", ""),
+            description=body.get("description", ""),
+            parameters=body.get("parameters"),
+            requires_confirmation=body.get("requires_confirmation", False),
+        )
+    elif asset_type == "agent":
+        report = audit_agent(
+            name=body.get("name", ""),
+            description=body.get("description", ""),
+            tools=body.get("tools"),
+        )
+    elif asset_type == "workflow":
+        report = audit_workflow(
+            name=body.get("name", ""),
+            description=body.get("description", ""),
+            steps=body.get("steps"),
+        )
+    else:
+        return {"ok": False, "error": f"Unknown asset type: {asset_type}"}
+
+    return {
+        "ok": True,
+        "asset_type": report.asset_type,
+        "asset_name": report.asset_name,
+        "scores": report.scores,
+        "overall": report.overall,
+        "grade": report.grade,
+        "passed": report.passed,
+        "findings": [
+            {"category": f.category, "severity": f.severity, "message": f.message, "suggestion": f.suggestion}
+            for f in report.findings
+        ],
+    }
+
+
 @app.get("/api/models")
 def api_list_models_endpoint():
     """List available models from the current provider's models endpoint.
