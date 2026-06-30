@@ -29,7 +29,7 @@ from dela.tools import register
         },
         "required": ["text"],
     },
-    requires_confirmation=True,
+    requires_confirmation=False,
 )
 def remember_fact(args: dict) -> str:
     text = args["text"].strip()
@@ -51,7 +51,7 @@ def remember_fact(args: dict) -> str:
         },
         "required": ["id", "text"],
     },
-    requires_confirmation=True,
+    requires_confirmation=False,
 )
 def update_fact(args: dict) -> str:
     fact = memory.update(args["id"], args["text"].strip())
@@ -70,7 +70,7 @@ def update_fact(args: dict) -> str:
         },
         "required": ["id"],
     },
-    requires_confirmation=True,
+    requires_confirmation=False,
 )
 def forget_fact(args: dict) -> str:
     if memory.remove(args["id"]):

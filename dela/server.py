@@ -12,6 +12,7 @@ import asyncio
 import json
 import sys
 import threading
+import time
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -39,13 +40,21 @@ async def lifespan(app: FastAPI):
     _main_loop = asyncio.get_event_loop()
     set_confirmer(WebSocketConfirmer())
     heartbeat.start()
-    # Start the OAuth token auto-refresh daemon (no-op if no oauth connections)
     try:
         from dela import oauth
         oauth.start_monitor()
     except Exception:
         pass
+    # Register agent status → WebSocket broadcast
+    from dela import agent_status
+    def _on_agent_status(name, state, task):
+        asyncio.run_coroutine_threadsafe(
+            _broadcast({"type": "agent_status", "agent": name, "state": state, "task": task[:80] if task else ""}),
+            _main_loop,
+        )
+    agent_status.on_change(_on_agent_status)
     yield
+    heartbeat.stop()
     heartbeat.stop()
     try:
         from dela import oauth
@@ -67,6 +76,7 @@ _history: list[dict] = []
 _confirm_callbacks: dict[str, threading.Event] = {}
 _confirm_results: dict[str, bool] = {}
 _brain_lock = threading.Lock()
+_oauth_refresh_times: dict[str, float] = {}
 
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
 
@@ -128,7 +138,10 @@ def api_get_memory():
 
 @app.post("/api/memory")
 def api_add_memory(body: dict):
-    return memory.add(body["text"], body.get("category", "general"))
+    text = body.get("text")
+    if not text:
+        return {"ok": False, "error": "Missing 'text' field"}
+    return memory.add(text, body.get("category", "general"))
 
 
 @app.delete("/api/memory/{fact_id}")
@@ -382,58 +395,128 @@ def api_ollama_status():
 
 # ── Voice endpoints (web STT/TTS) ─────────────────────────────────────────────
 
+def _decode_with_pyav(audio_bytes: bytes) -> bytes | None:
+    """Decode audio bytes (WebM/Opus, WAV, etc.) to raw 16-bit 16kHz mono PCM using PyAV.
+    Returns None if PyAV is not available or decoding fails.
+    """
+    import io
+    try:
+        import av
+        container = av.open(io.BytesIO(audio_bytes), "r")
+        audio_stream = next((s for s in container.streams if s.type == "audio"), None)
+        if audio_stream is None:
+            return None
+
+        resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+        chunks: list[bytes] = []
+        for packet in container.demux(audio_stream):
+            for frame in packet.decode():
+                for resampled in resampler.resample(frame):
+                    arr = resampled.to_ndarray()
+                    if arr.ndim > 1:
+                        arr = arr.ravel()
+                    chunks.append(arr.tobytes())
+        if not chunks:
+            return None
+        return b"".join(chunks)
+    except Exception:
+        return None
+
+
+def _decode_with_ffmpeg(audio_bytes: bytes) -> bytes | None:
+    """Decode audio bytes to raw 16-bit 16kHz mono PCM using system ffmpeg binary.
+    Returns None if ffmpeg is not installed or decoding fails.
+    """
+    import subprocess, tempfile, os
+    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
+        tmp_in.write(audio_bytes)
+        tmp_in_path = tmp_in.name
+    tmp_out_path = tmp_in_path.replace(".webm", ".wav")
+    try:
+        subprocess.run(
+            ["ffmpeg", "-i", tmp_in_path, "-ar", "16000", "-ac", "1", "-f", "wav", tmp_out_path],
+            capture_output=True, timeout=10, check=True,
+        )
+        from dela.stt import wav_to_pcm
+        with open(tmp_out_path, "rb") as f:
+            wav_bytes = f.read()
+        return wav_to_pcm(wav_bytes)
+    except Exception:
+        return None
+    finally:
+        for p in (tmp_in_path, tmp_out_path):
+            try:
+                os.unlink(p)
+            except Exception:
+                pass
+
+
 @app.post("/api/voice/stt")
 async def api_voice_stt(request: Request):
     """Receive audio from the browser, transcribe with faster-whisper."""
     from dela.stt import transcribe, wav_to_pcm, STTError
 
+    MAX_UPLOAD_BYTES = 5 * 1024 * 1024  # 5 MB — ~5 min of 16kHz mono
     file = await request.body()
     if not file:
         return {"text": "", "ok": False, "error": "No audio data received."}
+    if len(file) > MAX_UPLOAD_BYTES:
+        return {"text": "", "ok": False, "error": f"Audio too large (max {MAX_UPLOAD_BYTES // 1024 // 1024} MB)."}
 
-    # Try to parse as WAV first; if that fails, try ffmpeg conversion
+    # Try to parse as WAV first; if that fails, try PyAV, then ffmpeg
     try:
         pcm = wav_to_pcm(file)
+        print("  [stt] decoded as WAV")
     except Exception:
-        # Not a WAV — try ffmpeg to convert webm/opus to wav
-        import subprocess, tempfile, os
-        with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as tmp_in:
-            tmp_in.write(file)
-            tmp_in_path = tmp_in.name
-        tmp_out_path = tmp_in_path.replace(".webm", ".wav")
-        try:
-            subprocess.run(
-                ["ffmpeg", "-i", tmp_in_path, "-ar", "16000", "-ac", "1", "-f", "wav", tmp_out_path],
-                capture_output=True, timeout=10,
-            )
-            with open(tmp_out_path, "rb") as f:
-                wav_bytes = f.read()
-            pcm = wav_to_pcm(wav_bytes)
-        except FileNotFoundError:
-            return {"text": "", "ok": False, "error": "Audio is not WAV and ffmpeg is not installed."}
-        finally:
-            for p in (tmp_in_path, tmp_out_path):
-                try: os.unlink(p)
-                except: pass
+        pcm = _decode_with_pyav(file)
+        if pcm is not None:
+            print("  [stt] decoded with PyAV")
+        if pcm is None:
+            pcm = _decode_with_ffmpeg(file)
+            if pcm is not None:
+                print("  [stt] decoded with ffmpeg")
+            if pcm is None:
+                return {"text": "", "ok": False, "error": "Audio is not WAV and no decoder is available (install ffmpeg)."}
 
     try:
         text = transcribe(pcm)
+        print(f"  [stt] transcribed: {text[:100]}")
         return {"text": text, "ok": True}
     except STTError as e:
+        print(f"  [stt] error: {e}")
         return {"text": "", "ok": False, "error": str(e)}
 
 
 @app.post("/api/voice/tts")
 async def api_voice_tts(body: dict):
     """Synthesize text to WAV audio for browser playback."""
-    from dela.tts import synthesize_wav, TTSError
+    from dela.tts import synthesize_wav as piper_synthesize, TTSError
 
     text = body.get("text", "")
     if not text.strip():
         return {"ok": False, "error": "No text provided."}
 
+    MAX_TTS_CHARS = 5000
+    if len(text) > MAX_TTS_CHARS:
+        text = text[:MAX_TTS_CHARS]
+
+    # Route to the selected TTS provider
+    provider = live_config.get("tts_provider") or config.TTS_PROVIDER
+
+    if provider == "kokoro":
+        try:
+            from dela.tts_kokoro import synthesize_wav as kokoro_synthesize
+            voice = live_config.get("kokoro_voice") or config.KOKORO_VOICE
+            wav_bytes = kokoro_synthesize(text, voice=voice)
+            if not wav_bytes:
+                return {"ok": False, "error": "Kokoro synthesis produced no audio."}
+            return Response(content=wav_bytes, media_type="audio/wav")
+        except Exception as e:
+            # Fall back to Piper if Kokoro fails (not installed, model missing, etc.)
+            print(f"  [tts] Kokoro failed ({e}), falling back to Piper")
+
     try:
-        wav_bytes = synthesize_wav(text)
+        wav_bytes = piper_synthesize(text)
         if not wav_bytes:
             return {"ok": False, "error": "Synthesis produced no audio."}
         return Response(content=wav_bytes, media_type="audio/wav")
@@ -638,9 +721,11 @@ def api_get_settings():
 def api_update_heartbeat_setting(body: dict):
     from dela import hb_config
     import json as _json
+    ALLOWED = {"interval", "checks"}  # only allow known heartbeat config keys
+    filtered = {k: v for k, v in body.items() if k in ALLOWED}
     path = hb_config.path()
     current = hb_config.load()
-    current.update(body)
+    current.update(filtered)
     path.write_text(_json.dumps(current, indent=2), encoding="utf-8")
     return {"ok": True, "config": current}
 
@@ -648,7 +733,7 @@ def api_update_heartbeat_setting(body: dict):
 def api_update_env_setting(body: dict):
     """Update a .env variable. Requires server restart to take effect."""
     key = body.get("key", "")
-    value = body.get("value", "")
+    value = body.get("value", "").replace("\n", "").replace("\r", "")  # prevent env injection via newlines
     if not key or not key.startswith("DELA_"):
         return {"ok": False, "error": "Key must start with DELA_"}
     env_path = Path(__file__).resolve().parent.parent / ".env"
@@ -836,6 +921,12 @@ def api_oauth_refresh(body: dict):
         return {"ok": False, "error": f"Connection '{name}' not found"}
     if conn.get("auth_type") != "oauth":
         return {"ok": False, "error": f"Connection '{name}' is not an OAuth connection"}
+    # Rate limit: 1 refresh per 60s per connection
+    now = time.time()
+    last = _oauth_refresh_times.get(name, 0)
+    if now - last < 60:
+        return {"ok": False, "error": "Rate limited — wait before refreshing again"}
+    _oauth_refresh_times[name] = now
     try:
         tok = oauth.force_refresh(conn)
         return {"ok": True, "token_status": oauth.token_info(conn)}
@@ -845,7 +936,10 @@ def api_oauth_refresh(body: dict):
 
 @app.put("/api/memory/{fact_id}")
 def api_update_memory(fact_id: int, body: dict):
-    result = memory.update(fact_id, body["text"])
+    text = body.get("text")
+    if not text:
+        return {"ok": False, "error": "Missing 'text' field"}
+    result = memory.update(fact_id, text)
     if result is None:
         return {"ok": False, "error": f"No fact with id {fact_id}."}
     return {"ok": True, "fact": result}
@@ -861,23 +955,34 @@ def api_get_hb_config():
 def api_update_hb_config(body: dict):
     from dela import hb_config
     import json as _json
+    ALLOWED = {"interval", "checks"}
+    filtered = {k: v for k, v in body.items() if k in ALLOWED}
     path = hb_config.path()
-    path.write_text(_json.dumps(body, indent=2), encoding="utf-8")
-    return {"ok": True, "config": body}
+    path.write_text(_json.dumps(filtered, indent=2), encoding="utf-8")
+    return {"ok": True, "config": filtered}
 
 
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    MAX_CLIENTS = 10
+    if len(_clients) >= MAX_CLIENTS:
+        await ws.accept()
+        await ws.send_json({"type": "error", "message": "Too many connections"})
+        await ws.close()
+        return
     await ws.accept()
+    try:
+        await ws.send_json({
+            "type": "init",
+            "notices": noticeboard.active(),
+            "heartbeat_active": not heartbeat.is_killed(),
+            "cost": audit.cost_summary(),
+        })
+    except Exception:
+        return  # client already gone, don't add to _clients
     _clients.add(ws)
-    await ws.send_json({
-        "type": "init",
-        "notices": noticeboard.active(),
-        "heartbeat_active": not heartbeat.is_killed(),
-        "cost": audit.cost_summary(),
-    })
     try:
         while True:
             data = await ws.receive_json()
@@ -895,19 +1000,21 @@ async def ws_endpoint(ws: WebSocket) -> None:
             elif t == "dismiss_notice":
                 noticeboard.dismiss(data["id"])
                 await _broadcast({"type": "notices_refresh", "notices": noticeboard.active()})
-
     except WebSocketDisconnect:
+        pass
+    finally:
         _clients.discard(ws)
 
 
 async def _handle_message(user_text: str) -> None:
     if not _brain_lock.acquire(blocking=False):
-        await _broadcast({"type": "token", "content": "[Dela is still thinking — please wait]", "tool_blip": True})
+        await _broadcast({"type": "token", "content": "[Dela is still thinking — please wait]", "tool_blip": False})
         return
 
     await _broadcast({"type": "state_change", "state": "thinking"})
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue[str | None] = asyncio.Queue()
+    turn_timeout = 300  # 5-minute watchdog
 
     def _run() -> None:
         try:
@@ -917,15 +1024,34 @@ async def _handle_message(user_text: str) -> None:
             asyncio.run_coroutine_threadsafe(queue.put(f"[error: {e}]"), loop)
         finally:
             asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+            try:
+                _brain_lock.release()
+            except RuntimeError:
+                pass  # lock already released by watchdog
+
+    def _watchdog() -> None:
+        time.sleep(turn_timeout)
+        try:
             _brain_lock.release()
+        except RuntimeError:
+            pass  # already released normally
 
     threading.Thread(target=_run, daemon=True).start()
+    threading.Thread(target=_watchdog, daemon=True).start()
 
+    token_count = 0
+    blip_count = 0
     while True:
         token = await queue.get()
         if token is None:
             break
-        is_blip = token.startswith("[") and token.endswith("]")
+        # Only tool status messages like "[ran fetch_url]" are tool blips.
+        # Error messages like "[error: ...]" or "[I can't reach...]" are real content.
+        is_blip = token.startswith("[") and token.endswith("]") and not token.startswith("[error") and not token.startswith("[I can't")
+        if is_blip:
+            blip_count += 1
+        else:
+            token_count += 1
         await _broadcast({
             "type": "token",
             "content": token,
@@ -933,6 +1059,8 @@ async def _handle_message(user_text: str) -> None:
         })
         if not is_blip:
             await _broadcast({"type": "state_change", "state": "speaking"})
+
+    print(f"  [brain] turn complete: {token_count} text tokens, {blip_count} tool blips, reply_len={sum(len(t) for t in [_history[-1].get('content','')] if _history)}, history_msgs={len(_history)}")
 
     await _broadcast({"type": "reply_done"})
     await _broadcast({"type": "state_change", "state": "idle"})

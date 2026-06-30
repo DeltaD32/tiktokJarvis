@@ -15,6 +15,7 @@ from __future__ import annotations
 import io
 import os
 import sys
+import threading
 import wave
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from dela import config
 
 _model = None
 _model_key: tuple[str, str, str] | None = None
+_model_lock = threading.Lock()
 
 
 def _ensure_cuda_dlls() -> None:
@@ -56,14 +58,16 @@ def _whisper():
     compute = config.WHISPER_COMPUTE
     key = (model_name, device, compute)
     if _model is None or _model_key != key:
-        from faster_whisper import WhisperModel
-        _model = WhisperModel(
-            model_name,
-            device=device,
-            compute_type=compute,
-            download_root=config.MODELS_DIR,
-        )
-        _model_key = key
+        with _model_lock:
+            if _model is None or _model_key != key:  # double-check
+                from faster_whisper import WhisperModel
+                _model = WhisperModel(
+                    model_name,
+                    device=device,
+                    compute_type=compute,
+                    download_root=config.MODELS_DIR,
+                )
+                _model_key = key
     return _model
 
 
@@ -78,10 +82,19 @@ def transcribe(audio_bytes: bytes, *, sample_rate: int = 16000) -> str:
     """Transcribe recorded audio (16-bit PCM mono) and return the text."""
     audio = _bytes_to_float(audio_bytes)
     try:
-        segments, _ = _whisper().transcribe(
-            audio, language="en", beam_size=5, vad_filter=True
+        segments, info = _whisper().transcribe(
+            audio, language="en", beam_size=5, vad_filter=False,
+            vad_parameters=dict(
+                threshold=0.5,
+                min_speech_duration_ms=250,
+                min_silence_duration_ms=100,
+            ),
         )
-        return " ".join(seg.text.strip() for seg in segments).strip()
+        seg_list = list(segments)
+        text = " ".join(seg.text.strip() for seg in seg_list).strip()
+        safe = text.encode('ascii', 'replace').decode('ascii')
+        print(f"  [stt] segments: {len(seg_list)}, text: {safe[:120]}")
+        return text
     except Exception as e:
         raise STTError(f"Transcription failed: {e}") from e
 
@@ -118,8 +131,14 @@ def wav_to_pcm(wav_bytes: bytes, target_rate: int = 16000) -> bytes:
     if framerate != target_rate:
         old_len = len(audio)
         new_len = int(old_len * target_rate / framerate)
-        indices = np.linspace(0, old_len - 1, new_len)
-        audio = np.interp(indices, np.arange(old_len), audio)
+        # FFT-based resampling: ideal lowpass + reconstruct at target length
+        fft = np.fft.rfft(audio)
+        freq_bins = len(fft)
+        cutoff_bin = int(freq_bins * target_rate / framerate)
+        if cutoff_bin < freq_bins:
+            fft[cutoff_bin:] = 0 + 0j
+        # irFFT with explicit output length — no time-domain interpolation needed
+        audio = np.fft.irfft(fft, n=new_len)
 
     # Back to 16-bit PCM bytes
     return (audio * 32767).astype(np.int16).tobytes()

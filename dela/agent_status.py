@@ -16,6 +16,15 @@ from dataclasses import dataclass, field
 
 _lock = threading.Lock()
 _status: dict[str, dict] = {}
+_listeners: list = []  # callbacks(name, state, task) on status change
+
+def on_change(cb) -> None:
+    _listeners.append(cb)
+
+def _notify(name: str, state: str, task: str = "") -> None:
+    for cb in _listeners:
+        try: cb(name, state, task)
+        except Exception: pass
 
 
 @dataclass
@@ -53,12 +62,14 @@ def mark_busy(name: str, task: str) -> None:
         s.last_task = task
         s.last_dispatch = time.time()
         s.dispatch_count += 1
+    _notify(name, "busy", task)
 
 
 def mark_ready(name: str) -> None:
     s = _ensure(name)
     with _lock:
         s.state = "ready"
+    _notify(name, "ready")
 
 
 def mark_error(name: str, error: str) -> None:
@@ -66,6 +77,7 @@ def mark_error(name: str, error: str) -> None:
     with _lock:
         s.state = "error"
         s.last_task = f"ERROR: {error[:120]}"
+    _notify(name, "error", error[:120])
 
 
 def get_status(name: str) -> str:

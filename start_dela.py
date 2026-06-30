@@ -30,6 +30,9 @@ import threading
 import webbrowser
 from pathlib import Path
 
+# Force UTF-8 output — Windows terminals default to CP1252 which can't print box-drawing chars
+sys.stdout.reconfigure(encoding='utf-8')
+
 ROOT = Path(__file__).resolve().parent
 VENV_PY = ROOT / ".venv" / "Scripts" / "python.exe"
 NODE = shutil.which("node")
@@ -227,10 +230,12 @@ def preflight() -> bool:
 
     print()
     return all_ok
-
 def start_backend() -> subprocess.Popen:
     """Start the FastAPI backend server."""
     info("Starting backend on port 8000...")
+    creationflags = 0
+    if sys.platform == "win32":
+        creationflags = subprocess.CREATE_NEW_PROCESS_GROUP
     proc = subprocess.Popen(
         [
             str(VENV_PY), "-m", "uvicorn", "dela.server:app",
@@ -243,7 +248,11 @@ def start_backend() -> subprocess.Popen:
         cwd=str(ROOT),
         encoding="utf-8",
         errors="replace",
+        creationflags=creationflags,
     )
+
+    # Drain output immediately so the pipe buffer doesn't fill and block the process
+    threading.Thread(target=pipe_output, args=(proc, "backend", C.CYAN), daemon=True).start()
 
     # Wait for server to be ready
     for _ in range(30):
@@ -258,11 +267,13 @@ def start_backend() -> subprocess.Popen:
     fail("Backend failed to start within 15s")
     return proc
 
+
 def start_frontend() -> subprocess.Popen:
     """Start the Vite dev server."""
     info("Starting frontend on port 5173...")
     vite = FRONTEND / "node_modules" / "vite" / "bin" / "vite.js"
     node_exe = NODE or "C:\\Program Files\\nodejs\\node.exe"
+    creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
     proc = subprocess.Popen(
         [node_exe, str(vite), "--port", "5173", "--strictPort"],
         stdout=subprocess.PIPE,
@@ -271,7 +282,11 @@ def start_frontend() -> subprocess.Popen:
         cwd=str(FRONTEND),
         encoding="utf-8",
         errors="replace",
+        creationflags=creationflags,
     )
+
+    # Drain output immediately so the pipe buffer doesn't fill and block the process
+    threading.Thread(target=pipe_output, args=(proc, "frontend", C.AMBER), daemon=True).start()
 
     # Wait for server to be ready
     for _ in range(30):
@@ -287,12 +302,17 @@ def start_frontend() -> subprocess.Popen:
     return proc
 
 def pipe_output(proc: subprocess.Popen, label: str, color: str):
-    """Thread: pipe subprocess output to console with a label."""
+    """Thread: pipe subprocess output to console with a label.
+    If the thread exits (pipe EOF or error), the subprocess is left running
+    but its stdout is fully drained — no deadlock risk."""
     prefix = f"{color}[{label}]{C.R} "
-    for line in proc.stdout:
-        line = line.rstrip()
-        if line:
-            print(f"  {prefix}{line}")
+    try:
+        for line in proc.stdout:
+            line = line.rstrip()
+            if line:
+                print(f"  {prefix}{line}")
+    except Exception:
+        pass  # thread exits gracefully; main loop polls proc via poll()
 
 def main():
     banner()
@@ -303,15 +323,9 @@ def main():
 
     print(f"{C.GREEN}{C.B}All checks passed. Launching Dela...{C.R}\n")
 
-    # Start both servers
+    # Start both servers (pipe_output threads are started inside each function)
     backend = start_backend()
     frontend = start_frontend()
-
-    # Pipe output in threads
-    bt = threading.Thread(target=pipe_output, args=(backend, "backend", C.CYAN), daemon=True)
-    ft = threading.Thread(target=pipe_output, args=(frontend, "frontend", C.AMBER), daemon=True)
-    bt.start()
-    ft.start()
 
     # Open browser after a short delay
     time.sleep(1.5)

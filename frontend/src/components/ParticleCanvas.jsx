@@ -1,4 +1,5 @@
 import { useRef, useEffect } from 'react'
+import { getVoiceAmplitude } from '../hooks/useVoiceTTS'
 
 const STATE_COLORS = {
   idle:      [0, 240, 255],
@@ -128,12 +129,10 @@ export function ParticleCanvas({ state, speaking }) {
       const busy = st === 'busy' || st === 'thinking'
       const alert = st === 'alert'
 
-      // Voice amplitude
+      // Voice amplitude — synced to real TTS audio via AnalyserNode
       let ampT = 0
       if (speakingRef.current) {
-        const word = Math.sin(t * 1.9 + 0.4) * 0.5 + 0.5
-        const syl = (Math.sin(t * 12.5) * 0.5 + 0.5) * (Math.sin(t * 27.3 + 1.1) * 0.5 + 0.5)
-        ampT = (0.2 + 0.8 * syl) * (0.3 + 0.7 * word)
+        ampT = getVoiceAmplitude()
       }
       voiceAmp += (ampT - voiceAmp) * 0.3
       const amp = voiceAmp

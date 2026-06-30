@@ -38,7 +38,7 @@ export function TopStrip({ state, cost, noticeCount, connected, input, setInput,
               onKeyDown={handleKey}
               placeholder="Issue a new directive..."
             />
-            <button className="run-btn" onClick={onSend}>RUN</button>
+            <button type="button" className="run-btn" onClick={onSend}>RUN</button>
           </div>
         </div>
       )}

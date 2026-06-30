@@ -50,10 +50,13 @@ LIVE_SETTINGS = {
     "whisper_device": str,
     "piper_voice": str,
     "vad_aggressiveness": int,
+    "tts_provider": str,         # "piper" or "kokoro"
+    "kokoro_voice": str,         # voice name for Kokoro (e.g. "af_heart")
     "model_router_enabled": str,  # "true"/"false" stored as string
     "model_fast": str,            # model name for fast tier
     "model_premium": str,         # model name for premium tier
     "model": str,                 # primary model — hot-reloadable (read by provider on each call)
+    "confirmation_threshold": float,  # 0-10, tools with score >= this need HITL approval
 }
 
 # Settings that require restart

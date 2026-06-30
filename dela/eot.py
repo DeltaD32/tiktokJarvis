@@ -35,6 +35,8 @@ class TurnState(Enum):
     PAUSED = "paused"
     DONE = "done"
 
+FRAME_MS = 30  # VAD frame duration in ms — must match vad.py
+
 
 class EoTDetector:
     """State machine that detects when the user has finished speaking."""
@@ -52,7 +54,7 @@ class EoTDetector:
         self.max_utterance_ms = max_utterance_ms
 
         self._state = TurnState.IDLE
-        self._speech_start: float = 0
+        self._last_speech_frame: float = 0
         self._speech_duration_ms: float = 0
         self._silence_start: float = 0
         self._last_vad_speech: bool = False
@@ -69,7 +71,7 @@ class EoTDetector:
 
     def reset(self) -> None:
         self._state = TurnState.IDLE
-        self._speech_start = 0
+        self._last_speech_frame = 0
         self._speech_duration_ms = 0
         self._silence_start = 0
         self._last_vad_speech = False
@@ -81,15 +83,15 @@ class EoTDetector:
         Args:
             vad_speech: True if VAD detected speech in this frame
             dela_speaking: True if Dela's TTS is currently playing
-            timestamp: current time (defaults to time.time())
+            timestamp: current time (defaults to time.monotonic())
         """
-        now = timestamp or time.time()
+        now = timestamp or time.monotonic()
 
         # Detect barge-in: user speaks while Dela is speaking
         if dela_speaking and vad_speech and not self._last_vad_speech:
             self._barge_in_triggered = True
             self._state = TurnState.SPEAKING
-            self._speech_start = now
+            self._last_speech_frame = now
             self._speech_duration_ms = 0
             return self._state
 
@@ -97,14 +99,13 @@ class EoTDetector:
         if self._state == TurnState.IDLE:
             if vad_speech:
                 self._state = TurnState.SPEAKING
-                self._speech_start = now
+                self._last_speech_frame = now
                 self._speech_duration_ms = 0
 
         elif self._state == TurnState.SPEAKING:
             if vad_speech:
-                self._speech_duration_ms += (now - self._speech_start) * 1000
-                self._speech_start = now
-                # Max utterance safety
+                self._speech_duration_ms += FRAME_MS  # each VAD frame is FRAME_MS
+                self._last_speech_frame = now
                 if self._speech_duration_ms > self.max_utterance_ms:
                     self._state = TurnState.DONE
             else:
@@ -113,12 +114,10 @@ class EoTDetector:
 
         elif self._state == TurnState.PAUSED:
             if vad_speech:
-                # User resumed — back to speaking
                 self._state = TurnState.SPEAKING
-                self._speech_start = now
+                self._last_speech_frame = now
             else:
                 silence_ms = (now - self._silence_start) * 1000
-                # Adaptive threshold: longer speech → shorter silence needed
                 adaptive_threshold = self.silence_threshold_ms
                 if self._speech_duration_ms > 5000:
                     adaptive_threshold = self.grace_period_ms
@@ -127,7 +126,6 @@ class EoTDetector:
                     if self._speech_duration_ms >= self.min_speech_ms:
                         self._state = TurnState.DONE
                     else:
-                        # Too short — was probably noise
                         self._state = TurnState.IDLE
 
         elif self._state == TurnState.DONE:

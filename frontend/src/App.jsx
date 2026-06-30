@@ -57,7 +57,7 @@ export default function App() {
     activePanel, panelMessage, confirmRequest,
     notices, noticeCount, heartbeatActive, cost,
     sendMessage, sendConfirm, closePanel, dismissNotice,
-    killHeartbeat, resumeHeartbeat,
+    killHeartbeat, resumeHeartbeat, agentStatus,
   } = useDelaWS()
 
   const [input, setInput] = useState('')
@@ -73,42 +73,56 @@ export default function App() {
   const [uplink, setUplink] = useState(null)
   const [agentInfo, setAgentInfo] = useState({ count: 5, ready: 5 })
   const [toolCount, setToolCount] = useState(46)
-  const [voiceEnabled, setVoiceEnabled] = useState(false)
+  const [voiceEnabled, setVoiceEnabled] = useState(true)
 
   // Voice
-  const { recording, transcribing, error: voiceError, toggle: toggleVoice } = useVoiceRecorder()
+  const { recording, transcribing, error: voiceError, toggle: toggleVoice, clearError: clearVoiceError } = useVoiceRecorder()
   const { speaking: ttsSpeaking, speak: ttsSpeak, stop: ttsStop } = useVoiceTTS()
 
-  // Initialize theme on mount
+  // Initialize theme on mount + clear stale voice error
   useEffect(() => {
     applyTheme(getCurrentTheme())
+    clearVoiceError()
   }, [])
+
+  // Re-focus idle input when transitioning back to idle
+  useEffect(() => {
+    if (orbState === 'idle') {
+      document.getElementById('idle-input')?.focus()
+    }
+  }, [orbState])
 
   // Fetch uplink status + agent/tool counts on mount and periodically
-  const fetchUplink = useCallback(() => {
-    fetch('/api/uplink')
+  const fetchControllerRef = useRef(null)
+
+  const fetchWithAbort = useCallback((url, onOk, onErr) => {
+    const controller = new AbortController()
+    // Abort any in-flight request before starting a new one
+    if (fetchControllerRef.current) fetchControllerRef.current.abort()
+    fetchControllerRef.current = controller
+    fetch(url, { signal: controller.signal })
       .then(r => r.json())
-      .then(data => setUplink(data))
-      .catch(() => setUplink({ status: 'unreachable' }))
+      .then(onOk)
+      .catch(err => {
+        if (err.name !== 'AbortError') onErr?.()
+      })
   }, [])
+
+  const fetchUplink = useCallback(() => {
+    fetchWithAbort('/api/uplink', setUplink, () => setUplink({ status: 'unreachable' }))
+  }, [fetchWithAbort])
 
   const fetchAgentInfo = useCallback(() => {
-    fetch('/api/agents')
-      .then(r => r.json())
-      .then(data => {
-        const agents = data || []
-        const ready = agents.filter(a => a.status === 'ready').length
-        setAgentInfo({ count: agents.length, ready, agents })
-      })
-      .catch(() => {})
-  }, [])
+    fetchWithAbort('/api/agents', (data) => {
+      const agents = data || []
+      const ready = agents.filter(a => a.status === 'ready').length
+      setAgentInfo({ count: agents.length, ready, agents })
+    })
+  }, [fetchWithAbort])
 
   const fetchToolCount = useCallback(() => {
-    fetch('/api/tools')
-      .then(r => r.json())
-      .then(data => setToolCount(data?.length || 46))
-      .catch(() => {})
-  }, [])
+    fetchWithAbort('/api/tools', (data) => setToolCount(data?.length || 46))
+  }, [fetchWithAbort])
 
   useEffect(() => {
     fetchUplink()
@@ -118,14 +132,38 @@ export default function App() {
       fetchUplink()
       fetchAgentInfo()
     }, 15000)
-    return () => clearInterval(interval)
+    return () => {
+      clearInterval(interval)
+      if (fetchControllerRef.current) fetchControllerRef.current.abort()
+    }
   }, [fetchUplink, fetchAgentInfo, fetchToolCount])
 
-  // Update CSS accent variables when state changes
+  // Update CSS accent variables when state or theme changes
   useEffect(() => {
-    const rgb = ACCENT_RGB[orbState] || ACCENT_RGB.idle
-    document.documentElement.style.setProperty('--accent-rgb', rgb)
-    document.documentElement.style.setProperty('--accent', `rgb(${rgb})`)
+    const varName = `--${orbState}-rgb`
+    const rgb =
+      getComputedStyle(document.documentElement).getPropertyValue(varName).trim() ||
+      getComputedStyle(document.documentElement).getPropertyValue('--idle-rgb').trim()
+    if (rgb) {
+      document.documentElement.style.setProperty('--accent-rgb', rgb)
+      document.documentElement.style.setProperty('--accent', `rgb(${rgb})`)
+    }
+  }, [orbState])
+
+  // Re-apply accent when theme changes (from Settings panel)
+  useEffect(() => {
+    const syncAccent = () => {
+      const style = getComputedStyle(document.documentElement)
+      const rgb =
+        style.getPropertyValue(`--${orbState}-rgb`).trim() ||
+        style.getPropertyValue('--idle-rgb').trim()
+      if (rgb) {
+        document.documentElement.style.setProperty('--accent-rgb', rgb)
+        document.documentElement.style.setProperty('--accent', `rgb(${rgb})`)
+      }
+    }
+    window.addEventListener('dela-theme-changed', syncAccent)
+    return () => window.removeEventListener('dela-theme-changed', syncAccent)
   }, [orbState])
 
   // Initialize panel positions based on viewport
@@ -165,45 +203,50 @@ export default function App() {
     })
   }, [])
 
-  const openLocalPanel = (p) => setLocalPanel(p)
-  const handleClose = () => { closePanel(); setLocalPanel(null) }
+  const openLocalPanel = useCallback((p) => setLocalPanel(p), [])
+  const handleClose = useCallback(() => { closePanel(); setLocalPanel(null) }, [closePanel])
   const panel = activePanel ?? localPanel
 
-  const handleSend = () => {
+  const handleSend = useCallback(() => {
     const text = input.trim()
     if (!text) return
     sendMessage(text)
     setInput('')
-  }
+  }, [input, sendMessage])
 
-  const handleKey = (e) => {
+  const handleKey = useCallback((e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
       handleSend()
     }
-  }
+  }, [handleSend])
 
-  const handleVoiceToggle = async () => {
-    const text = await toggleVoice()
-    if (text && text.trim()) {
-      setInput(text.trim())
-      // Auto-send after voice transcription
-      sendMessage(text.trim())
-      setInput('')
+  const handleVoiceToggle = useCallback(async () => {
+    if (recording) {
+      const text = await toggleVoice()
+      console.log('[voice] STT result:', JSON.stringify(text))
+      if (text && text.trim()) {
+        setInput(text.trim())
+        sendMessage(text.trim())
+        setInput('')
+      } else {
+        console.log('[voice] empty/error — not sending')
+      }
+    } else {
+      toggleVoice()
     }
-  }
+  }, [recording, toggleVoice, sendMessage])
 
-  // TTS: speak Dela's reply when it completes (only if voice enabled)
+  // TTS: speak Dela's reply when a new assistant message arrives (only if voice enabled)
   const lastReplyRef = useRef('')
   useEffect(() => {
-    if (voiceEnabled && orbState === 'idle' && conversation.length > 0) {
-      const lastMsg = conversation[conversation.length - 1]
-      if (lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content !== lastReplyRef.current) {
-        lastReplyRef.current = lastMsg.content
-        ttsSpeak(lastMsg.content)
-      }
+    if (!voiceEnabled || conversation.length === 0) return
+    const lastMsg = conversation[conversation.length - 1]
+    if (lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content !== lastReplyRef.current) {
+      lastReplyRef.current = lastMsg.content
+      ttsSpeak(lastMsg.content)
     }
-  }, [orbState, conversation, voiceEnabled, ttsSpeak])
+  }, [conversation, voiceEnabled, ttsSpeak])
 
   // Stop TTS when state changes to thinking (barge-in)
   useEffect(() => {
@@ -243,18 +286,27 @@ export default function App() {
         />
       )}
 
-      {/* Data panel buttons (right side of top strip area — small buttons) */}
-      <div style={{ position: 'absolute', top: 14, right: 24, zIndex: 7, display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 320 }}>
-        <button className="data-btn" onClick={() => openLocalPanel('analytics')}>ANALYTICS</button>
-        <button className="data-btn" onClick={() => openLocalPanel('tools')}>TOOLS</button>
-        <button className="data-btn" onClick={() => openLocalPanel('workflows')}>WORKFLOWS</button>
-        <button className="data-btn" onClick={() => openLocalPanel('notices')}>NOTICES{noticeCount > 0 ? ` (${noticeCount})` : ''}</button>
-        <button className="data-btn" onClick={() => openLocalPanel('settings')}>SETTINGS</button>
-        <button className="data-btn" onClick={() => openLocalPanel('security')}>SECURITY</button>
-        <button className="data-btn" onClick={() => openLocalPanel('memory')}>MEMORY</button>
-        <button className="data-btn" onClick={() => openLocalPanel('state')}>STATE</button>
-        <button className="data-btn" onClick={() => openLocalPanel('audit')}>AUDIT</button>
-        <button className="data-btn" onClick={() => openLocalPanel('tasks')}>TASKS</button>
+      {/* Skip navigation link for keyboard users */}
+      <a href="#idle-input" className="skip-link">Skip to input</a>
+
+      {/* Data panel buttons — right side, below top strip when active */}
+      <div style={{ position: 'absolute', top: isIdle ? 14 : 50, right: 24, zIndex: 7, display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 320 }}>
+        {[
+          ['analytics', 'ANALYTICS'],
+          ['tools', 'TOOLS'],
+          ['workflows', 'WORKFLOWS'],
+          ['notices', 'NOTICES' + (noticeCount > 0 ? ' (' + noticeCount + ')' : '')],
+          ['settings', 'SETTINGS'],
+          ['security', 'SECURITY'],
+          ['memory', 'MEMORY'],
+          ['state', 'STATE'],
+          ['audit', 'AUDIT'],
+          ['tasks', 'TASKS'],
+        ].map(([panel, label]) => (
+          <button key={panel} className="data-btn" onClick={() => openLocalPanel(panel)} aria-label={`Open ${label} panel`}>
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Idle view */}
@@ -313,6 +365,7 @@ export default function App() {
             <div className="idle-input-wrap">
               <span className="idle-input-prompt">&gt;</span>
               <input
+                id="idle-input"
                 className="idle-input"
                 value={input}
                 onChange={e => setInput(e.target.value)}
@@ -323,11 +376,11 @@ export default function App() {
               <button
                 className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
                 onClick={handleVoiceToggle}
-                title={recording ? 'Stop and transcribe' : 'Start voice input'}
+                aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
               >
                 {transcribing ? '...' : recording ? 'STOP' : 'MIC'}
               </button>
-              <button className="execute-btn" onClick={handleSend}>EXECUTE</button>
+              <button type="button" className="execute-btn" onClick={handleSend}>EXECUTE</button>
             </div>
             {voiceError && (
               <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)' }}>
@@ -353,15 +406,19 @@ export default function App() {
               <div className="agent-roster">
                 <div className="agent-roster-label">AGENT ROSTER</div>
                 <div className="agent-roster-grid">
-                  {agentInfo.agents.map(a => (
-                    <div key={a.name} className="agent-roster-item" title={a.description || ''}>
-                      <span className={`agent-dot agent-dot-${a.status}`} />
+                  {agentInfo.agents.map(a => {
+                    const live = agentStatus[a.name]
+                    const displayStatus = live?.state || a.status
+                    return (
+                    <div key={a.name} className="agent-roster-item" title={live?.task || a.description || ''}>
+                      <span className={`agent-dot agent-dot-${displayStatus}`} />
                       <span className="agent-name">{a.name}</span>
                       {a.dispatch_count > 0 && (
                         <span className="agent-dispatch-count">{a.dispatch_count}</span>
                       )}
                     </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
@@ -369,25 +426,58 @@ export default function App() {
         </div>
       )}
 
-      {/* Voice HUD */}
-      <VoiceHud speaking={isSpeaking || ttsSpeaking} caption={caption} recording={recording} transcribing={transcribing} />
+      {/* Voice HUD — only during actual audio (recording, transcribing, TTS playback), not during text streaming */}
+      <VoiceHud speaking={ttsSpeaking} caption={caption} recording={recording} transcribing={transcribing} />
 
       {/* Conversation overlay (when not idle) */}
       {!isIdle && (conversation.length > 0 || currentStream || toolStatus) && (
         <div className="conv-overlay">
           {conversation.slice(-6).map(msg => (
-            <div key={msg.id} className={`conv-msg ${msg.role}`}>
-              {msg.content.slice(0, 200)}{msg.content.length > 200 ? '...' : ''}
+            <div
+              key={msg.id}
+              className={`conv-msg ${msg.role}`}
+              title="Click or press Enter to copy"
+              tabIndex={0}
+              role="button"
+              style={{ cursor: 'pointer', wordBreak: 'break-all', overflowWrap: 'break-word' }}
+              onClick={() => {
+                navigator.clipboard.writeText(msg.content).catch(() => {
+                  // Fallback for non-secure contexts (HTTP, Playwright, etc.)
+                  const ta = document.createElement('textarea')
+                  ta.value = msg.content
+                  ta.style.position = 'fixed'; ta.style.opacity = '0'
+                  document.body.appendChild(ta)
+                  ta.select()
+                  try { document.execCommand('copy') } catch (_) {}
+                  document.body.removeChild(ta)
+                })
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault()
+                  navigator.clipboard.writeText(msg.content).catch(() => {
+                    const ta = document.createElement('textarea')
+                    ta.value = msg.content
+                    ta.style.position = 'fixed'; ta.style.opacity = '0'
+                    document.body.appendChild(ta)
+                    ta.select()
+                    try { document.execCommand('copy') } catch (_) {}
+                    document.body.removeChild(ta)
+                  })
+                }
+              }}
+            >
+              {msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content}
             </div>
           ))}
           {currentStream && (
-            <div className="conv-msg streaming">
-              {currentStream.slice(0, 200)}{currentStream.length > 200 ? '...' : ''}
+            <div className="conv-msg streaming" style={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}>
+              {currentStream.length > 200 ? currentStream.slice(0, 200) + '...' : currentStream}
               <span style={{ animation: 'jblink 1s steps(1) infinite', color: 'var(--accent)' }}>▍</span>
             </div>
           )}
           {toolStatus && (
-            <div className="conv-msg tool-blip">{toolStatus}</div>
+            <div className="conv-msg tool-blip" style={{ wordBreak: 'break-all' }}>{toolStatus}</div>
           )}
         </div>
       )}

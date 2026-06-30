@@ -6,20 +6,21 @@ Each tool carries:
   - a clear name and a one-line description of WHEN to use it (for the model)
   - a typed JSON-schema for its inputs (no freeform blobs)
   - a `requires_confirmation` flag: read-only lookups are False; anything that
-    sends, spends, deletes, or changes a setting is True. The gate lives in
-    Tier 6; we flag now so it has teeth from the beginning.
+    sends, spends, deletes, or changes a setting MAY require confirmation
+  - an optional `impact_score(args) -> float` (0-10): dynamically computed from
+    args. If score >= confirmation_threshold, the HITL gate fires. Tools without
+    an impact_score function use their requires_confirmation flag as a default
+    (True=10, False=0).
 """
 
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
-# A tool's runner takes a dict of arguments and returns a plain-language string
-# (success OR error). Returning an error as a result — not raising — lets the
-# model reason over failures and recover.
 ToolRunner = Callable[[dict[str, Any]], str]
+ImpactScorer = Callable[[dict[str, Any]], float]
 
 
 @dataclass
@@ -29,7 +30,8 @@ class Tool:
     parameters: dict[str, Any]
     run: ToolRunner
     requires_confirmation: bool = False
-    output_schema: dict[str, Any] | None = None  # optional: validate output shape
+    impact_score: ImpactScorer | None = None
+    output_schema: dict[str, Any] | None = None
 
     def schema(self) -> dict[str, Any]:
         return {
@@ -40,6 +42,17 @@ class Tool:
                 "parameters": self.parameters,
             },
         }
+
+    def dynamic_impact(self, args: dict[str, Any]) -> float:
+        """Return the dynamic impact score (0-10) for this tool call.
+        Uses the impact_score function if set; otherwise falls back to
+        requires_confirmation flag (True=10, False=0)."""
+        if self.impact_score is not None:
+            try:
+                return max(0.0, min(10.0, self.impact_score(args)))
+            except Exception:
+                return 10.0 if self.requires_confirmation else 0.0
+        return 10.0 if self.requires_confirmation else 0.0
 
 
 class Registry:
@@ -85,6 +98,7 @@ def register(
     description: str,
     parameters: dict[str, Any],
     requires_confirmation: bool = False,
+    impact_score: ImpactScorer | None = None,
 ) -> Callable[[ToolRunner], ToolRunner]:
     """Decorator: register a function as a tool."""
 
@@ -96,6 +110,7 @@ def register(
                 parameters=parameters,
                 run=fn,
                 requires_confirmation=requires_confirmation,
+                impact_score=impact_score,
             )
         )
         return fn

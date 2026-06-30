@@ -1114,3 +1114,20 @@ textarea.chat-input::placeholder, input.chat-input::placeholder { color: var(--t
   color: var(--text-dim);
   margin-left: 2px;
 }
+
+/* Skip-navigation link — visible on focus for keyboard users */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 8px;
+  z-index: 100;
+  padding: 6px 12px;
+  background: var(--accent);
+  color: #05060A;
+  font: 500 11px 'JetBrains Mono', monospace;
+  text-decoration: none;
+  border-radius: 4px;
+}
+.skip-link:focus {
+  left: 8px;
+}

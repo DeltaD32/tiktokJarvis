@@ -463,6 +463,19 @@ export function SettingsPanel({ onClose, message }) {
             ]}
             hint="Controls reasoning depth. Applied to next model call — no restart."
           />
+          <LiveField
+            label="CONFIRMATION THRESHOLD"
+            settingKey="confirmation_threshold"
+            value={settings.live?.confirmation_threshold || '5'}
+            options={[
+              { value: '0', label: '0 — never ask (risky)' },
+              { value: '3', label: '3 — only high-impact' },
+              { value: '5', label: '5 — moderate (default)' },
+              { value: '7', label: '7 — cautious' },
+              { value: '10', label: '10 — ask for everything' },
+            ]}
+            hint="Tools with impact score ≥ threshold require approval. 0=skip all gates."
+          />
           <Field label="TRACING" value={settings.tracing.provider} />
           <div style={{ marginTop: 16, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
             <Field label="TOOLS" value={`${settings.runtime.tools_count} registered`} />
@@ -671,13 +684,13 @@ export function SettingsPanel({ onClose, message }) {
             <LiveField
               label="FAST MODEL"
               settingKey="model_fast"
-              value={settings.live?.model_fast || settings.model}
+              value={settings.live?.model_fast || settings.model?.model}
               hint="Cheap model for trivial tasks (math, formatting, lookups)"
             />
             <LiveField
               label="PREMIUM MODEL"
               settingKey="model_premium"
-              value={settings.live?.model_premium || settings.model}
+              value={settings.live?.model_premium || settings.model?.model}
               hint="Expensive model for complex tasks (coding, architecture, analysis)"
             />
           </div>
@@ -730,6 +743,32 @@ export function SettingsPanel({ onClose, message }) {
               { value: 'en_GB-alan-medium', label: 'en_GB-alan-medium (male, British)' },
             ]}
             hint="Reloaded on next TTS call — no restart."
+          />
+          <LiveField
+            label="TTS PROVIDER"
+            settingKey="tts_provider"
+            value={settings.live?.tts_provider || 'kokoro'}
+            options={[
+              { value: 'piper', label: 'Piper — lightweight, fast' },
+              { value: 'kokoro', label: 'Kokoro — high fidelity (82M params, ~330MB)' },
+            ]}
+            hint="Kokoro requires pip install kokoro + espeak-ng. Falls back to Piper if unavailable."
+          />
+          <LiveField
+            label="KOKORO VOICE"
+            settingKey="kokoro_voice"
+            value={settings.live?.kokoro_voice || 'af_heart'}
+            options={[
+              { value: 'af_heart', label: 'af_heart (female, warm)' },
+              { value: 'af_bella', label: 'af_bella (female, clear)' },
+              { value: 'af_nicole', label: 'af_nicole (female, calm)' },
+              { value: 'af_sarah', label: 'af_sarah (female, bright)' },
+              { value: 'af_sky', label: 'af_sky (female, soft)' },
+              { value: 'am_adam', label: 'am_adam (male, deep)' },
+              { value: 'am_michael', label: 'am_michael (male, neutral)' },
+              { value: 'am_eric', label: 'am_eric (male, warm)' },
+            ]}
+            hint="Only used when TTS provider is Kokoro. Applied to next TTS call."
           />
           <LiveField
             label="VAD AGGRESSIVENESS"

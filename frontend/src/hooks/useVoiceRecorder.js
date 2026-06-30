@@ -3,8 +3,8 @@ import { useState, useRef, useCallback, useEffect } from 'react'
 /**
  * useVoiceRecorder — records audio from the microphone and sends it to /api/voice/stt.
  *
- * Uses the Web Audio API to capture at 16kHz mono, package as WAV, and POST
- * to the backend. No external dependencies — pure browser API.
+ * Uses MediaRecorder API to capture audio and POST the blob to the backend.
+ * Opus/WebM preferred; Safari falls back to browser default container.
  *
  * Returns:
  *   - recording: bool — currently recording
@@ -13,6 +13,7 @@ import { useState, useRef, useCallback, useEffect } from 'react'
  *   - start: () => void — start recording
  *   - stop: () => Promise<string> — stop and transcribe, returns text
  *   - toggle: () => void — start/stop toggle
+ *   - clearError: () => void — reset error state
  */
 export function useVoiceRecorder() {
   const [recording, setRecording] = useState(false)
@@ -20,14 +21,20 @@ export function useVoiceRecorder() {
   const [error, setError] = useState(null)
   const [transcribing, setTranscribing] = useState(false)
 
-  const audioCtxRef = useRef(null)
   const streamRef = useRef(null)
   const chunksRef = useRef([])
   const mediaRecorderRef = useRef(null)
+  const abortRef = useRef(null)  // AbortController for in-flight STT fetch
 
   const start = useCallback(async () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') return // already recording
     setError(null)
     try {
+      // Guard: browser must support getUserMedia and MediaRecorder
+      if (typeof MediaRecorder === 'undefined') {
+        throw new Error('MediaRecorder not supported in this browser')
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
@@ -36,24 +43,36 @@ export function useVoiceRecorder() {
           noiseSuppression: true,
         },
       })
-      streamRef.current = stream
 
-      // Use MediaRecorder — most reliable cross-browser
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
-        ? 'audio/webm;codecs=opus'
-        : 'audio/webm'
+      // Pick MIME: prefer Opus, fallback to plain WebM, WAV for Safari
+      let mimeType = ''
+      if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+        mimeType = 'audio/webm;codecs=opus'
+      } else if (MediaRecorder.isTypeSupported('audio/webm')) {
+        mimeType = 'audio/webm'
+      }
+      // Safari: no WebM support; MediaRecorder will use default (mp4) — STT backend handles it
 
-      const recorder = new MediaRecorder(stream, { mimeType })
+      const opts = mimeType ? { mimeType } : {}
+      const recorder = new MediaRecorder(stream, opts)
       chunksRef.current = []
+
+      // Only store refs after constructor succeeds — prevents stream leak on throw
+      streamRef.current = stream
+      mediaRecorderRef.current = recorder
 
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
 
       recorder.start()
-      mediaRecorderRef.current = recorder
       setRecording(true)
     } catch (e) {
+      // If stream was acquired but recorder failed, clean up
+      if (streamRef.current && !mediaRecorderRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop())
+        streamRef.current = null
+      }
       setError(e.message || 'Could not access microphone')
     }
   }, [])
@@ -68,28 +87,29 @@ export function useVoiceRecorder() {
       }
 
       recorder.onstop = async () => {
-        // Stop all tracks
         if (streamRef.current) {
           streamRef.current.getTracks().forEach(t => t.stop())
           streamRef.current = null
         }
         setRecording(false)
 
-        const blob = new Blob(chunksRef.current, { type: 'audio/webm' })
+        const blob = new Blob(chunksRef.current)
         if (blob.size === 0) {
           resolve('')
           return
         }
 
+        // Abort any previous STT fetch still in flight (double-stop guard)
+        if (abortRef.current) abortRef.current.abort()
+        const controller = new AbortController()
+        abortRef.current = controller
+
         setTranscribing(true)
         try {
-          const formData = new FormData()
-          formData.append('audio', blob, 'recording.webm')
-
           const res = await fetch('/api/voice/stt', {
             method: 'POST',
             body: blob,
-            headers: { 'Content-Type': 'audio/webm' },
+            signal: controller.signal,
           })
           const data = await res.json()
           if (data.ok && data.text) {
@@ -100,10 +120,13 @@ export function useVoiceRecorder() {
             resolve('')
           }
         } catch (e) {
-          setError(e.message || 'Network error during transcription')
+          if (e.name !== 'AbortError') {
+            setError(e.message || 'Network error during transcription')
+          }
           resolve('')
         } finally {
           setTranscribing(false)
+          abortRef.current = null
         }
       }
 
@@ -124,8 +147,9 @@ export function useVoiceRecorder() {
       if (streamRef.current) {
         streamRef.current.getTracks().forEach(t => t.stop())
       }
+      if (abortRef.current) abortRef.current.abort()
     }
   }, [])
 
-  return { recording, transcript, error, transcribing, start, stop, toggle }
+  return { recording, transcript, error, transcribing, start, stop, toggle, clearError: () => setError(null) }
 }

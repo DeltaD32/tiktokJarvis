@@ -21,6 +21,8 @@ import sounddevice as sd
 from dela import config
 
 _voice = None
+_voice_name: str | None = None
+_voice_lock = threading.Lock()
 _VOICE_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
 _VOICE_PATHS = {
     "en_US-amy-medium": "en/en_US/amy/medium/en_US-amy-medium",
@@ -36,31 +38,55 @@ def _voice_dir() -> Path:
 
 def _ensure_voice() -> Path:
     """Download the .onnx + .json for the configured voice if missing."""
-    name = config.PIPER_VOICE
+    from dela import live_config
+    name = live_config.get("piper_voice") or config.PIPER_VOICE
     rel = _VOICE_PATHS.get(name, name)
     onnx = _voice_dir() / f"{name}.onnx"
     cfg = _voice_dir() / f"{name}.onnx.json"
-    if not onnx.exists():
-        print(f"[downloading Piper voice: {name} (~60MB, one-time)]")
-        urllib.request.urlretrieve(f"{_VOICE_BASE}/{rel}.onnx", onnx)
-    if not cfg.exists():
-        urllib.request.urlretrieve(f"{_VOICE_BASE}/{rel}.onnx.json", cfg)
+
+    def _download(url: str, dest: Path, label: str, expected_min_bytes: int = 1000) -> None:
+        if dest.exists():
+            size = dest.stat().st_size
+            if size < expected_min_bytes:
+                print(f"[removing truncated {label}: {size} bytes]")
+                dest.unlink()
+            else:
+                return  # already downloaded
+        print(f"[downloading Piper {label}: {name} (~60MB, one-time)]")
+        # Download with timeout; verify file starts with valid header
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = resp.read()
+        # ONNX files start with protobuf magic; JSON with '{'
+        if label == "voice":
+            if len(data) < 4 or data[:4] != b'\x08\x08\x12\x08':
+                raise RuntimeError(f"Downloaded ONNX file has invalid header — possible corruption")
+        elif label == "config":
+            if len(data) < 2 or data[0:1] != b'{':
+                raise RuntimeError(f"Downloaded config is not JSON — possible corruption")
+        dest.write_bytes(data)
+
+    _download(f"{_VOICE_BASE}/{rel}.onnx", onnx, "voice", expected_min_bytes=50_000_000)
+    _download(f"{_VOICE_BASE}/{rel}.onnx.json", cfg, "config", expected_min_bytes=100)
     return onnx
 
 
 def _piper():
-    global _voice
-    if _voice is None:
-        from piper import PiperVoice
-
-        onnx = _ensure_voice()
-        # use_cuda only if onnxruntime has the CUDA provider; else CPU (still fast).
-        try:
-            import onnxruntime as ort
-            has_cuda = "CUDAExecutionProvider" in ort.get_available_providers()
-        except Exception:
-            has_cuda = False
-        _voice = PiperVoice.load(onnx, use_cuda=has_cuda)
+    global _voice, _voice_name
+    from dela import live_config
+    current_name = live_config.get("piper_voice") or config.PIPER_VOICE
+    if _voice is None or _voice_name != current_name:
+        with _voice_lock:
+            if _voice is None or _voice_name != current_name:  # double-check
+                from piper import PiperVoice
+                onnx = _ensure_voice()
+                try:
+                    import onnxruntime as ort
+                    has_cuda = "CUDAExecutionProvider" in ort.get_available_providers()
+                except Exception:
+                    has_cuda = False
+                _voice = PiperVoice.load(onnx, use_cuda=has_cuda)
+                _voice_name = current_name
     return _voice
 
 

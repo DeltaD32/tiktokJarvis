@@ -62,7 +62,7 @@ def list_tasks(args: dict) -> str:
         },
         "required": ["title"],
     },
-    requires_confirmation=True,
+    requires_confirmation=False,
 )
 def add_task(args: dict) -> str:
     tasks = _load()
@@ -89,7 +89,7 @@ def add_task(args: dict) -> str:
         },
         "required": ["id"],
     },
-    requires_confirmation=True,
+    requires_confirmation=False,
 )
 def complete_task(args: dict) -> str:
     tasks = _load()

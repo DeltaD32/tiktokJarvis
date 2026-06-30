@@ -207,8 +207,13 @@ def _run_one_tool(call: Any, history: list[Message]) -> Iterator[str]:
         yield f"[unknown tool {name}]"
         return
 
-    # Confirmation gate — stop consequential tools until the user says yes.
-    if tool.requires_confirmation:
+    # Confirmation gate — dynamic impact assessment.
+    # Tools define an optional impact_score(args) → 0-10. If score >= threshold,
+    # the HITL gate fires. Default threshold is 5 (moderate impact).
+    from dela import live_config
+    threshold = float(live_config.get("confirmation_threshold") or config.CONFIRMATION_THRESHOLD)
+    score = tool.dynamic_impact(args)
+    if score >= threshold:
         description = f"{name} with {json.dumps(args)}"
         granted = gate.ask(name, description)
         audit.confirmation_request(name, description, granted)

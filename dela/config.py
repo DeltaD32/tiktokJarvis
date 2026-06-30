@@ -49,11 +49,16 @@ WHISPER_MODEL = _optional("DELA_WHISPER_MODEL", "small.en")
 WHISPER_DEVICE = _optional("DELA_WHISPER_DEVICE", "cuda")
 WHISPER_COMPUTE = _optional("DELA_WHISPER_COMPUTE", "float16")
 PIPER_VOICE = _optional("DELA_PIPER_VOICE", "en_US-amy-medium")
+TTS_PROVIDER = _optional("DELA_TTS_PROVIDER", "kokoro")  # "piper" or "kokoro"
+KOKORO_VOICE = _optional("DELA_KOKORO_VOICE", "af_heart")
 VAD_AGGRESSIVENESS = int(_optional("DELA_VAD_AGGRESSIVENESS", "3"))
 
 # Compaction (auto-summarize when conversation gets long)
 COMPACTION_THRESHOLD_CHARS = int(_optional("DELA_COMPACTION_THRESHOLD_CHARS", "100000"))
 COMPACTION_KEEP_RECENT_CHARS = int(_optional("DELA_COMPACTION_KEEP_RECENT_CHARS", "20000"))
+
+# Confirmation gate threshold (0-10). Tools with score >= threshold need HITL approval.
+CONFIRMATION_THRESHOLD = float(_optional("DELA_CONFIRMATION_THRESHOLD", "5"))
 
 # Thinking level (off/minimal/low/medium/high/xhigh — model-dependent)
 THINKING_LEVEL = _optional("DELA_THINKING_LEVEL", "")  # empty = don't send

@@ -1,12 +1,17 @@
+import { useMemo } from 'react'
+
 export function VoiceHud({ speaking, caption, recording, transcribing }) {
   if (!speaking && !recording && !transcribing) return null
 
-  const bars = Array.from({ length: 20 }, (_, i) => ({
-    dur: (0.5 + Math.random() * 0.55).toFixed(2) + 's',
-    delay: (Math.random() * 0.4).toFixed(2) + 's',
-  }))
+  // Memoize bar configs so animation durations don't jitter on re-render
+  const bars = useMemo(() =>
+    Array.from({ length: 20 }, () => ({
+      dur: (0.5 + Math.random() * 0.55).toFixed(2) + 's',
+      delay: (Math.random() * 0.4).toFixed(2) + 's',
+    }))
+  , [])
 
-  const label = recording ? 'LISTENING' : transcribing ? 'TRANSCRIBING' : 'DELA'
+  const label = recording ? 'LISTENING' : transcribing ? 'TRANSCRIBING' : 'SPEAKING'
   const text = recording ? 'recording your voice...' : transcribing ? 'converting speech to text...' : caption
 
   return (
@@ -19,7 +24,7 @@ export function VoiceHud({ speaking, caption, recording, transcribing }) {
             style={{
               animation: `jeq ${b.dur} ease-in-out infinite`,
               animationDelay: b.delay,
-              background: recording ? 'var(--red)' : transcribing ? 'var(--amber)' : undefined,
+              background: recording ? 'var(--red)' : transcribing ? 'var(--amber)' : 'var(--accent)',
             }}
           />
         ))}

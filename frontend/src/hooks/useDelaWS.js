@@ -5,6 +5,7 @@ const WS_URL = `ws://${window.location.host}/ws`
 export function useDelaWS() {
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
+  const connIdRef = useRef(0)  // incremented on each connect; used to discard stale onclose
 
   const [connected, setConnected]         = useState(false)
   const [orbState, setOrbState]           = useState('idle')
@@ -18,9 +19,13 @@ export function useDelaWS() {
   const [noticeCount, setNoticeCount]     = useState(0)
   const [heartbeatActive, setHeartbeatActive] = useState(true)
   const [cost, setCost]                   = useState('—')
+  const [agentStatus, setAgentStatus]     = useState({})  // { name: { state, task } }
 
   // Buffer to hold the full reply text while it animates
   const streamBuffer = useRef('')
+  const idleTimer = useRef(null)
+  const _processingTurn = useRef(false)
+  const msgIdRef = useRef(0)
 
   const connect = useCallback(() => {
     if (reconnectTimer.current) {
@@ -28,12 +33,16 @@ export function useDelaWS() {
       reconnectTimer.current = null
     }
 
+    connIdRef.current += 1
+    const connId = connIdRef.current
+
     const ws = new WebSocket(WS_URL)
     wsRef.current = ws
 
     ws.onopen = () => setConnected(true)
 
     ws.onmessage = (ev) => {
+      if (connIdRef.current !== connId) return  // stale connection
       let data
       try { data = JSON.parse(ev.data) } catch { return }
 
@@ -43,10 +52,25 @@ export function useDelaWS() {
           setNoticeCount((data.notices ?? []).length)
           setHeartbeatActive(data.heartbeat_active ?? true)
           if (data.cost) setCost(data.cost)
+          _processingTurn.current = false
+          streamBuffer.current = ''
           break
 
         case 'state_change':
-          setOrbState(data.state)
+          if (idleTimer.current) {
+            clearTimeout(idleTimer.current)
+            idleTimer.current = null
+          }
+          if (data.state === 'idle') {
+            _processingTurn.current = false
+            // Delay idle transition so the conversation stays visible between turns
+            idleTimer.current = setTimeout(() => {
+              setOrbState('idle')
+              idleTimer.current = null
+            }, 60000)
+          } else {
+            setOrbState(data.state)
+          }
           break
 
         case 'token':
@@ -60,16 +84,23 @@ export function useDelaWS() {
 
         case 'reply_done': {
           const reply = streamBuffer.current
+          streamBuffer.current = ''
+          setCurrentStream(null)
           if (reply) {
+            msgIdRef.current += 1
             setConversation(prev => [
               ...prev,
-              { role: 'assistant', content: reply, id: Date.now() },
+              { role: 'assistant', content: reply, id: msgIdRef.current },
             ])
-            streamBuffer.current = ''
-            setCurrentStream(null)
           }
           setToolStatus(null)
-          setOrbState('idle')
+          _processingTurn.current = false
+          // Delay idle so the conversation stays visible between turns
+          if (idleTimer.current) clearTimeout(idleTimer.current)
+          idleTimer.current = setTimeout(() => {
+            setOrbState('idle')
+            idleTimer.current = null
+          }, 60000)
           break
         }
 
@@ -101,6 +132,13 @@ export function useDelaWS() {
           setCost(data.cost ?? '—')
           break
 
+        case 'agent_status':
+          setAgentStatus(prev => ({
+            ...prev,
+            [data.agent]: { state: data.state, task: data.task || '' },
+          }))
+          break
+
         default:
           break
       }
@@ -108,28 +146,55 @@ export function useDelaWS() {
 
     ws.onclose = () => {
       setConnected(false)
-      reconnectTimer.current = setTimeout(connect, 3500)
+      _processingTurn.current = false
+      setToolStatus(null)
+      setCurrentStream(null)
+      streamBuffer.current = ''
+      if (idleTimer.current) {
+        clearTimeout(idleTimer.current)
+        idleTimer.current = null
+      }
+      if (connIdRef.current === connId) {
+        reconnectTimer.current = setTimeout(connect, 3500)
+      }
     }
 
-    ws.onerror = () => ws.close()
+    ws.onerror = () => { if (connIdRef.current === connId) ws.close() }
   }, [])
 
   useEffect(() => {
     connect()
     return () => {
+      connIdRef.current += 1  // invalidate any pending reconnect from this mount
       wsRef.current?.close()
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current)
+      if (idleTimer.current) clearTimeout(idleTimer.current)
     }
   }, [connect])
 
   const send = useCallback((payload) => {
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(payload))
+    const ws = wsRef.current
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      // If CONNECTING, the message will be lost; reconnect will resync via init
+      return
     }
+    try { ws.send(JSON.stringify(payload)) } catch { /* malformed payload */ }
   }, [])
 
   const sendMessage = useCallback((content) => {
-    setConversation(prev => [...prev, { role: 'user', content, id: Date.now() }])
+    console.log('[ws] sendMessage:', content.slice(0, 60))
+    // Guard: if the brain is already processing, queue this for the next turn
+    if (_processingTurn.current) {
+      console.log('[ws] (ignored — already processing a turn)')
+      return
+    }
+    if (idleTimer.current) {
+      clearTimeout(idleTimer.current)
+      idleTimer.current = null
+    }
+    _processingTurn.current = true
+    msgIdRef.current += 1
+    setConversation(prev => [...prev, { role: 'user', content, id: msgIdRef.current }])
     setOrbState('thinking')
     setCurrentStream(null)
     streamBuffer.current = ''
@@ -177,6 +242,7 @@ export function useDelaWS() {
     noticeCount,
     heartbeatActive,
     cost,
+    agentStatus,
     sendMessage,
     sendConfirm,
     closePanel,

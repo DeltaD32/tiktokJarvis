@@ -71,9 +71,12 @@ def run_duplex_loop(on_transcript, on_state_change) -> None:
     dela_speaking = False
     running = True
 
-    # Audio capture thread
-    audio_queue: queue.Queue[bytes] = queue.Queue()
+    # Audio capture thread — bounded queue prevents OOM if main loop blocks
+    MAX_QUEUE_FRAMES = 200  # ~6 seconds at 30ms frames
+    audio_queue: queue.Queue[bytes] = queue.Queue(maxsize=MAX_QUEUE_FRAMES)
     stop_event = threading.Event()
+    _speaking_done = threading.Event()
+    _speaking_done.set()  # not speaking initially
 
     def _capture():
         try:
@@ -96,8 +99,11 @@ def run_duplex_loop(on_transcript, on_state_change) -> None:
 
     try:
         while running:
-            # Get audio chunk
-            chunk = audio_queue.get(timeout=1)
+            # Get audio chunk with timeout — allows stop_event check
+            try:
+                chunk = audio_queue.get(timeout=1)
+            except queue.Empty:
+                continue
             if chunk is None:
                 break
 
@@ -141,14 +147,17 @@ def run_duplex_loop(on_transcript, on_state_change) -> None:
 
                         # Response phase — Dela speaks
                         dela_speaking = True
+                        _speaking_done.clear()
                         on_state_change("speaking")
-                        # The actual TTS + response is handled by the caller
-                        # via on_transcript callback. The caller should call
-                        # signal_speaking_done() when TTS finishes.
+                        # The brain loop handles TTS + response via on_transcript.
+                        # It MUST call signal_speaking_done() when TTS finishes.
+                        # Wait for TTS to complete (with timeout safety)
+                        _speaking_done.wait(timeout=60)
                 except Exception:
                     pass
 
                 dela_speaking = False
+                _speaking_done.set()
                 eot.reset()
                 on_state_change("listening")
 
@@ -160,5 +169,7 @@ def run_duplex_loop(on_transcript, on_state_change) -> None:
 
 
 def signal_speaking_done() -> None:
-    """Called by the brain/voice loop when TTS playback finishes."""
-    pass  # The duplex loop checks dela_speaking flag internally
+    """Called by the brain/voice loop when TTS playback finishes.
+    Signals the duplex loop to continue listening."""
+    import dela.voice_duplex as vd
+    vd._speaking_done.set()

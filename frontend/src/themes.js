@@ -61,6 +61,7 @@ export function applyTheme(themeName) {
   root.style.setProperty('--accent-rgb', theme.colors.idle)
   root.style.setProperty('--accent', `rgb(${theme.colors.idle})`)
   localStorage.setItem('dela-theme', themeName)
+  window.dispatchEvent(new CustomEvent('dela-theme-changed'))
 }
 
 export function getCurrentTheme() {
