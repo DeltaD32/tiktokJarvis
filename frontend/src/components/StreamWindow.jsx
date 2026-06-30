@@ -2,11 +2,84 @@ import { FloatWindow } from './FloatWindow'
 
 export function StreamWindow({ panel, onClose, onFocus, onDragMove, conversation, currentStream, toolStatus, systemState }) {
   const recent = conversation.slice(-20)
-  const nodeDot = (type) => ({
-    user: 'var(--cyan)',
-    assistant: 'var(--green)',
-    tool: 'var(--amber)',
-  })[type] || 'var(--text-faint)'
+
+  const msgAlign = (role) => {
+    if (role === 'user') return 'flex-end'
+    if (role === 'assistant') return 'flex-start'
+    return 'center'  // tool / unknown
+  }
+
+  const msgColor = (role) => {
+    if (role === 'user') return { dot: 'var(--cyan)', bg: 'rgba(0,240,255,0.06)', tag: 'var(--cyan)', tagBg: 'rgba(0,240,255,0.12)' }
+    if (role === 'assistant') return { dot: 'var(--green)', bg: 'rgba(70,242,176,0.06)', tag: 'var(--green)', tagBg: 'rgba(70,242,176,0.12)' }
+    return { dot: 'var(--amber)', bg: 'rgba(255,179,0,0.06)', tag: 'var(--amber)', tagBg: 'rgba(255,179,0,0.12)' }
+  }
+
+  const renderNode = (role, label, tag, content, isStreaming, isTool) => {
+    const colors = msgColor(role)
+    const align = msgAlign(role)
+    const isCenter = align === 'center'
+
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: align,
+        padding: '3px 0',
+      }}>
+        <div style={{
+          maxWidth: isCenter ? '100%' : '85%',
+          padding: '5px 8px',
+          borderRadius: 8,
+          background: colors.bg,
+          border: `1px solid ${colors.dot}22`,
+          fontSize: 11,
+          lineHeight: 1.4,
+          color: 'var(--text)',
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: content ? 3 : 0 }}>
+            <span style={{
+              fontSize: 9, fontWeight: 600, color: colors.tag,
+              fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em'
+            }}>
+              {label}
+            </span>
+            <span style={{
+              fontSize: 8, padding: '0 4px', borderRadius: 3,
+              color: colors.tag, background: colors.tagBg,
+              fontFamily: "'JetBrains Mono', monospace"
+            }}>
+              {tag}
+            </span>
+            {isStreaming && (
+              <span style={{ animation: 'jblink 1s steps(1) infinite', color: 'var(--accent)', fontSize: 9 }}>▍</span>
+            )}
+          </div>
+          {content && (
+            <div style={{
+              maxHeight: 70,
+              overflow: 'hidden',
+              whiteSpace: 'pre-wrap',
+              opacity: 0.9,
+            }}>
+              {content.slice(0, 300)}{content.length > 300 ? '…' : ''}
+            </div>
+          )}
+          {isTool && (
+            <div style={{
+              maxHeight: 50,
+              overflow: 'hidden',
+              whiteSpace: 'pre-wrap',
+              opacity: 0.85,
+              fontSize: 10,
+              color: 'var(--amber)',
+            }}>
+              {content.slice(0, 200)}
+            </div>
+          )}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <FloatWindow
@@ -16,76 +89,29 @@ export function StreamWindow({ panel, onClose, onFocus, onDragMove, conversation
       onClose={onClose}
       onFocus={onFocus}
       onDragMove={onDragMove}
-      width={560}
+      width={600}
       maxHeight="62vh"
     >
-      <div className="float-body" style={{ display: 'flex', flexDirection: 'column', gap: 0 }}>
+      <div className="float-body" style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         {recent.length === 0 && !currentStream && !toolStatus && (
           <p className="panel-empty">No activity yet. Send a message to begin.</p>
         )}
 
-        {recent.map((msg, i) => (
-          <div key={msg.id || i} className="stream-node">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 14 }}>
-              <div className="stream-node-dot" style={{ borderColor: nodeDot(msg.role) }} />
-              {i < recent.length - 1 && <div className="stream-line" />}
+        {recent.map((msg, i) => {
+          const isTool = msg.role === 'tool' || msg.content?.startsWith('[')
+          const role = isTool ? 'tool' : msg.role
+          const label = isTool ? 'TOOL' : role === 'user' ? 'YOU' : 'DELA'
+          const tag = isTool ? 'EXEC' : role === 'user' ? 'DIRECTIVE' : 'RESPONSE'
+          return (
+            <div key={msg.id || i}>
+              {renderNode(role, label, tag, msg.content, false, isTool)}
             </div>
-            <div className="stream-node-content">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="stream-node-title">{msg.role === 'user' ? 'User' : 'Dela'}</span>
-                <span className="stream-node-tag" style={{
-                  color: msg.role === 'user' ? 'var(--cyan)' : 'var(--green)',
-                  background: msg.role === 'user' ? 'rgba(0,240,255,0.12)' : 'rgba(70,242,176,0.12)',
-                }}>
-                  {msg.role === 'user' ? 'DIRECTIVE' : 'RESPONSE'}
-                </span>
-              </div>
-              <div className="stream-node-text" style={{
-                maxHeight: 80,
-                overflow: 'hidden',
-                whiteSpace: 'pre-wrap',
-              }}>
-                {msg.content.slice(0, 300)}
-                {msg.content.length > 300 ? '...' : ''}
-              </div>
-            </div>
-          </div>
-        ))}
+          )
+        })}
 
-        {/* Streaming response */}
-        {currentStream && (
-          <div className="stream-node">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 14 }}>
-              <div className="stream-node-dot active" />
-            </div>
-            <div className="stream-node-content">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="stream-node-title">Dela</span>
-                <span className="stream-node-tag" style={{ color: 'var(--amber)', background: 'rgba(255,179,0,0.12)' }}>STREAMING</span>
-              </div>
-              <div className="stream-node-text" style={{ whiteSpace: 'pre-wrap', maxHeight: 100, overflow: 'hidden' }}>
-                {currentStream.slice(0, 300)}{currentStream.length > 300 ? '...' : ''}
-                <span style={{ animation: 'jblink 1s steps(1) infinite', color: 'var(--accent)' }}>▍</span>
-              </div>
-            </div>
-          </div>
-        )}
+        {currentStream && renderNode('assistant', 'DELA', 'STREAMING', currentStream, true, false)}
 
-        {/* Tool status */}
-        {toolStatus && (
-          <div className="stream-node">
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 14 }}>
-              <div className="stream-node-dot active" style={{ borderColor: 'var(--amber)' }} />
-            </div>
-            <div className="stream-node-content">
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span className="stream-node-title">Tool</span>
-                <span className="stream-node-tag" style={{ color: 'var(--amber)', background: 'rgba(255,179,0,0.12)' }}>EXECUTING</span>
-              </div>
-              <div className="stream-node-text">{toolStatus}</div>
-            </div>
-          </div>
-        )}
+        {toolStatus && renderNode('tool', 'TOOL', 'ACTIVE', toolStatus, false, true)}
       </div>
     </FloatWindow>
   )

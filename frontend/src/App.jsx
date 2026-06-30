@@ -19,6 +19,7 @@ import { SecurityPanel }        from './components/panels/SecurityPanel'
 import { SettingsPanel }        from './components/panels/SettingsPanel'
 import { AnalyticsPanel }       from './components/panels/AnalyticsPanel'
 import { WorkflowDesignerPanel } from './components/panels/WorkflowDesignerPanel'
+import { AgentRosterPanel }    from './components/panels/AgentRosterPanel'
 import { useDelaWS }            from './hooks/useDelaWS'
 import { useVoiceRecorder }     from './hooks/useVoiceRecorder'
 import { useVoiceTTS }          from './hooks/useVoiceTTS'
@@ -296,6 +297,7 @@ export default function App() {
           ['tools', 'TOOLS'],
           ['workflows', 'WORKFLOWS'],
           ['notices', 'NOTICES' + (noticeCount > 0 ? ' (' + noticeCount + ')' : '')],
+          ['agents', 'AGENTS'],
           ['settings', 'SETTINGS'],
           ['security', 'SECURITY'],
           ['memory', 'MEMORY'],
@@ -402,26 +404,19 @@ export default function App() {
                 {voiceEnabled ? 'VOICE ON' : 'VOICE OFF'}
               </button>
             </div>
-            {agentInfo.agents && agentInfo.agents.length > 0 && (
-              <div className="agent-roster">
-                <div className="agent-roster-label">AGENT ROSTER</div>
-                <div className="agent-roster-grid">
-                  {agentInfo.agents.map(a => {
-                    const live = agentStatus[a.name]
-                    const displayStatus = live?.state || a.status
-                    return (
-                    <div key={a.name} className="agent-roster-item" title={live?.task || a.description || ''}>
-                      <span className={`agent-dot agent-dot-${displayStatus}`} />
-                      <span className="agent-name">{a.name}</span>
-                      {a.dispatch_count > 0 && (
-                        <span className="agent-dispatch-count">{a.dispatch_count}</span>
-                      )}
-                    </div>
-                    )
-                  })}
-                </div>
-              </div>
-            )}
+            {/* Agent status summary — click AGENTS button for full roster */}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 4 }}>
+              {agentInfo.agents && agentInfo.agents.slice(0, 5).map(a => {
+                const live = agentStatus[a.name]
+                const status = live?.state || a.status
+                return (
+                  <span key={a.name} style={{ fontSize: 9, color: status === 'busy' ? 'var(--amber)' : status === 'ready' ? 'var(--text-dim)' : 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 3 }}>
+                    <span style={{ width: 5, height: 5, borderRadius: '50%', display: 'inline-block', background: status === 'busy' ? 'var(--amber)' : status === 'ready' ? 'var(--green)' : 'var(--text-faint)' }} />
+                    {a.name}
+                  </span>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -429,10 +424,10 @@ export default function App() {
       {/* Voice HUD — only during actual audio (recording, transcribing, TTS playback), not during text streaming */}
       <VoiceHud speaking={ttsSpeaking} caption={caption} recording={recording} transcribing={transcribing} />
 
-      {/* Conversation overlay (when not idle) */}
+      {/* Conversation overlay — minimal, full details in Stream panel */}
       {!isIdle && (conversation.length > 0 || currentStream || toolStatus) && (
         <div className="conv-overlay">
-          {conversation.slice(-6).map(msg => (
+          {conversation.slice(-8).map(msg => (
             <div
               key={msg.id}
               className={`conv-msg ${msg.role}`}
@@ -442,7 +437,6 @@ export default function App() {
               style={{ cursor: 'pointer', wordBreak: 'break-all', overflowWrap: 'break-word' }}
               onClick={() => {
                 navigator.clipboard.writeText(msg.content).catch(() => {
-                  // Fallback for non-secure contexts (HTTP, Playwright, etc.)
                   const ta = document.createElement('textarea')
                   ta.value = msg.content
                   ta.style.position = 'fixed'; ta.style.opacity = '0'
@@ -467,17 +461,22 @@ export default function App() {
                 }
               }}
             >
-              {msg.content.length > 200 ? msg.content.slice(0, 200) + '...' : msg.content}
+              <span className="conv-role-tag">{msg.role === 'user' ? 'YOU' : 'DELA'}</span>
+              {msg.content.slice(0, 60)}{msg.content.length > 60 ? '…' : ''}
             </div>
           ))}
           {currentStream && (
             <div className="conv-msg streaming" style={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}>
-              {currentStream.length > 200 ? currentStream.slice(0, 200) + '...' : currentStream}
+              <span className="conv-role-tag" style={{ color: 'var(--accent)' }}>DELA</span>
+              {currentStream.slice(0, 60)}{currentStream.length > 60 ? '…' : ''}
               <span style={{ animation: 'jblink 1s steps(1) infinite', color: 'var(--accent)' }}>▍</span>
             </div>
           )}
           {toolStatus && (
-            <div className="conv-msg tool-blip" style={{ wordBreak: 'break-all' }}>{toolStatus}</div>
+            <div className="conv-msg tool-blip" style={{ wordBreak: 'break-all' }}>
+              <span className="conv-role-tag" style={{ color: 'var(--amber)' }}>TOOL</span>
+              {toolStatus}
+            </div>
           )}
         </div>
       )}
@@ -551,6 +550,9 @@ export default function App() {
             notices={notices}
             onDismiss={dismissNotice}
           />
+        )}
+        {panel === 'agents' && (
+          <AgentRosterPanel key="agents" onClose={handleClose} message={panelMessage} />
         )}
         {panel === 'tasks' && (
           <TasksPanel key="tasks" onClose={handleClose} message={panelMessage} />
