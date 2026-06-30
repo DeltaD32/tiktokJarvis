@@ -58,6 +58,7 @@ LIVE_SETTINGS = {
     "model_premium": str,         # model name for premium tier
     "model": str,                 # primary model — hot-reloadable (read by provider on each call)
     "confirmation_threshold": float,  # 0-10, tools with score >= this need HITL approval
+    "max_tokens": int,           # max output tokens per turn (default 2048, 0 = unlimited)
 }
 
 # Settings that require restart

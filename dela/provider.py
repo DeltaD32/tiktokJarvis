@@ -77,12 +77,19 @@ def _client() -> OpenAI:
 def _thinking_kwargs() -> dict:
     """Build thinking-level kwargs if configured. Reads from live config."""
     from dela import live_config
+    kwargs = {}
     level = live_config.get("thinking_level", "").strip().lower() if live_config.get("thinking_level") else ""
     if not level:
         level = getattr(config, "THINKING_LEVEL", "").strip().lower()
-    if not level:
-        return {}
-    return {"reasoning_effort": level} if level in ("low", "medium", "high") else {}
+    if level in ("low", "medium", "high"):
+        kwargs["reasoning_effort"] = level
+    # Cap output length for faster responses — can be overridden via live_config
+    max_tok = live_config.get("max_tokens")
+    if max_tok:
+        kwargs["max_tokens"] = int(max_tok)
+    elif not getattr(config, "MAX_TOKENS", None):
+        kwargs["max_tokens"] = 2048  # sensible default — prevents runaway responses
+    return kwargs
 
 
 def _tracing_headers() -> dict[str, str] | None:

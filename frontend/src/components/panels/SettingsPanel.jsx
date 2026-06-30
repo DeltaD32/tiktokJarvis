@@ -464,6 +464,19 @@ export function SettingsPanel({ onClose, message }) {
             hint="Controls reasoning depth. Applied to next model call — no restart."
           />
           <LiveField
+            label="MAX OUTPUT TOKENS"
+            settingKey="max_tokens"
+            value={settings.live?.max_tokens || '2048'}
+            options={[
+              { value: '512', label: '512 — very short (fastest)' },
+              { value: '1024', label: '1024 — short' },
+              { value: '2048', label: '2048 — balanced (default)' },
+              { value: '4096', label: '4096 — long' },
+              { value: '0', label: '0 — unlimited' },
+            ]}
+            hint="Limits response length. Lower = faster. 0 = no limit."
+          />
+          <LiveField
             label="CONFIRMATION THRESHOLD"
             settingKey="confirmation_threshold"
             value={settings.live?.confirmation_threshold || '5'}

@@ -143,7 +143,7 @@ def route_model(
 
     from dela import live_config
 
-    enabled = live_config.get("model_router_enabled", False)
+    enabled = live_config.get("model_router_enabled", True)
     if not enabled or str(enabled).lower() in ("false", "0", "no", "off"):
         return None
 
