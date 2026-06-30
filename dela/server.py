@@ -939,10 +939,20 @@ def api_update_memory(fact_id: int, body: dict):
     text = body.get("text")
     if not text:
         return {"ok": False, "error": "Missing 'text' field"}
-    result = memory.update(fact_id, text)
+    category = body.get("category")  # optional — preserves existing if not set
+    result = memory.update(fact_id, text, category=category)
     if result is None:
         return {"ok": False, "error": f"No fact with id {fact_id}."}
     return {"ok": True, "fact": result}
+
+@app.get("/api/memory/search")
+def api_search_memory(q: str = "", category: str = ""):
+    """Search memory facts by text query. GET /api/memory/search?q=coffee&category=preference"""
+    if not q.strip():
+        facts = memory.list_facts(category=category or None)
+    else:
+        facts = memory.search_facts(q, category=category or None)
+    return {"ok": True, "facts": facts, "count": len(facts)}
 
 
 @app.get("/api/config/heartbeat")

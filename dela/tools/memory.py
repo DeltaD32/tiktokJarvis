@@ -1,10 +1,4 @@
-"""Memory tools — let the model record, update, and forget durable facts.
-
-These are the model's way of managing its own long-term memory as it learns.
-Adding/updating a fact is consequential (it shapes future behavior), so these
-require confirmation — the user stays in control of what gets remembered.
-"""
-
+"""Memory tools — let the model record, update, query, and forget durable facts."""
 from __future__ import annotations
 
 from dela import memory
@@ -13,19 +7,16 @@ from dela.tools import register
 
 @register(
     name="remember_fact",
-    description="Store a durable fact about the user or their world — a preference, identity, or decision. Use this when the user tells you something worth remembering across conversations. Each fact is one plain statement. Confirm with the user before storing.",
+    description=(
+        "Store a durable fact about the user or their world. "
+        "Each fact is one plain statement. Skips duplicates automatically."
+    ),
     parameters={
         "type": "object",
         "properties": {
-            "text": {
-                "type": "string",
-                "description": "One plain statement of the fact, e.g. 'The user prefers morning meetings.'",
-            },
-            "category": {
-                "type": "string",
-                "description": "A short category: 'preference', 'identity', 'decision', 'project', or 'general'.",
-                "enum": ["preference", "identity", "decision", "project", "general"],
-            },
+            "text": {"type": "string", "description": "The fact statement, e.g. 'The user prefers morning meetings.'"},
+            "category": {"type": "string", "description": "Category: preference, identity, decision, project, or general.",
+                         "enum": ["preference", "identity", "decision", "project", "general"]},
         },
         "required": ["text"],
     },
@@ -37,12 +28,16 @@ def remember_fact(args: dict) -> str:
         return "Can't remember an empty fact."
     category = args.get("category", "general")
     fact = memory.add(text, category)
+    if fact.get("duplicate"):
+        return f"Already know: {fact['text'][:80]}"
+    if fact.get("error"):
+        return fact["error"]
     return f"Remembered (fact {fact['id']}): {fact['text']}"
 
 
 @register(
     name="update_fact",
-    description="Update an existing stored fact by its id when the user corrects or refines something you already know. Confirm the change with the user.",
+    description="Update an existing stored fact by its id.",
     parameters={
         "type": "object",
         "properties": {
@@ -62,7 +57,7 @@ def update_fact(args: dict) -> str:
 
 @register(
     name="forget_fact",
-    description="Remove a stored fact by its id when the user tells you something is no longer true or relevant. Confirm which fact before forgetting.",
+    description="Remove a stored fact by its id.",
     parameters={
         "type": "object",
         "properties": {
@@ -76,3 +71,47 @@ def forget_fact(args: dict) -> str:
     if memory.remove(args["id"]):
         return f"Forgot fact {args['id']}."
     return f"No fact with id {args['id']}."
+
+
+@register(
+    name="list_facts",
+    description="List stored facts, optionally filtered by category.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "category": {"type": "string", "description": "Optional category filter."},
+        },
+        "required": [],
+    },
+    requires_confirmation=False,
+)
+def list_facts(args: dict) -> str:
+    category = args.get("category")
+    facts = memory.list_facts(category=category)
+    if not facts:
+        return "No facts stored" + (f" under category '{category}'." if category else " yet.")
+    lines = [f"  [{f['id']}] [{f['category']}] {f['text']}" for f in facts]
+    return "Stored facts:\n" + "\n".join(lines)
+
+
+@register(
+    name="search_facts",
+    description="Search stored facts by text query. Returns best matches first.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "query": {"type": "string", "description": "Search term or phrase."},
+            "category": {"type": "string", "description": "Optional category to narrow search."},
+        },
+        "required": ["query"],
+    },
+    requires_confirmation=False,
+)
+def search_facts(args: dict) -> str:
+    query = args["query"].strip()
+    category = args.get("category")
+    results = memory.search_facts(query, category=category)
+    if not results:
+        return f"No facts found matching '{query}'."
+    lines = [f"  [{f['id']}] [{f['category']}] {f['text']}" for f in results]
+    return f"Facts matching '{query}':\n" + "\n".join(lines)
