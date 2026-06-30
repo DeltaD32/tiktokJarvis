@@ -100,7 +100,7 @@ export function SettingsPanel({ onClose, message }) {
     if (section === 'profile') {
       fetch('/api/ollama/status').then(r => r.json()).then(d => setOllama(d)).catch(() => {})
     }
-    if (section === 'general') {
+    if (section === 'general' || section === 'router') {
       fetch('/api/models').then(r => r.json()).then(d => setModelList(d)).catch(() => {})
     }
     if (section === 'connections') {
@@ -697,13 +697,21 @@ export function SettingsPanel({ onClose, message }) {
             <LiveField
               label="FAST MODEL"
               settingKey="model_fast"
-              value={settings.live?.model_fast || settings.model?.model}
+              value={settings.live?.model_fast || '__default__'}
+              options={[
+                { value: '__default__', label: '— use default model —' },
+                ...(modelList?.models || []).map(m => ({ value: m, label: m + (m === modelList?.current ? ' (default)' : '') })),
+              ]}
               hint="Cheap model for trivial tasks (math, formatting, lookups)"
             />
             <LiveField
               label="PREMIUM MODEL"
               settingKey="model_premium"
-              value={settings.live?.model_premium || settings.model?.model}
+              value={settings.live?.model_premium || '__default__'}
+              options={[
+                { value: '__default__', label: '— use default model —' },
+                ...(modelList?.models || []).map(m => ({ value: m, label: m + (m === modelList?.current ? ' (default)' : '') })),
+              ]}
               hint="Expensive model for complex tasks (coding, architecture, analysis)"
             />
           </div>

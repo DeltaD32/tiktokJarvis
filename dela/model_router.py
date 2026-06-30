@@ -151,11 +151,11 @@ def route_model(
 
     if tier == "fast":
         model = live_config.get("model_fast", None)
-        if model and model != "default":
+        if model and model not in ("default", "__default__"):
             return model
     elif tier == "premium":
         model = live_config.get("model_premium", None)
-        if model and model != "default":
+        if model and model not in ("default", "__default__"):
             return model
 
     # "default" tier or no model configured for the tier → use config.MODEL (None = default)
