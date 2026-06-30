@@ -21,23 +21,31 @@ No per-call API charges for speech. No cloud dependency for audio. No heavy fram
 **Works fully offline with Ollama** — LLM, STT, TTS, and VAD all run locally. No internet required.
 
 | Capability | Status |
-|---|---|
+|---|---|---|
 | Text, voice, and web UI turns through one shared brain | ✅ |
 | 47 tools across 18 modules — add new ones in one file | ✅ |
-| Fully local voice: faster-whisper STT + Piper TTS + webrtcvad | ✅ |
+| Fully local voice: faster-whisper STT + Piper (25 voices) + Kokoro (12 voices) TTS + webrtcvad | ✅ |
 | Open-mic duplex with barge-in (no LiveKit, no Redis) | ✅ |
-| Voice I/O through the web UI — mic button + TTS playback | ✅ |
+| Voice I/O through the web UI — mic button + TTS playback + 🔊 toggle | ✅ |
 | 5 sub-agents with scoped tools and live status tracking | ✅ |
 | Multi-agent orchestration via blackboard architecture | ✅ |
 | Workflow system with visual designer, scheduling, DAG execution | ✅ |
 | Proactive heartbeat — 6 checks running on intervals | ✅ |
-| Durable memory that survives restarts | ✅ |
+| Durable memory that survives restarts (thread-safe, dedup, search) | ✅ |
 | Security self-audit — OWASP LLM Top 10 + CWE Top 25 (20 checks) | ✅ |
 | Prioritized findings (P0–P4) + agent-powered fix button | ✅ |
-| Model router — auto-saves tokens by routing simple tasks to cheap models | ✅ |
+| Model router — auto-saves tokens by routing simple tasks to cheap models (default on) | ✅ |
 | Profile system — personal, work, or fully offline (Ollama) | ✅ |
 | 11 hot-reloadable live settings — no restart to change them | ✅ |
-| Holographic web UI with 5 themes, floating windows, live agent roster | ✅ |
+| Personality matrix — 7 presets (Friendly, Professional, Energetic, Calm, British, Technical, Creative) | ✅ |
+| Dynamic HITL gate — impact-based confirmation scoring (0–10 threshold) | ✅ |
+| Kokoro TTS provider — 12 US/UK voices at 24kHz (default, auto-download) | ✅ |
+| Multi-tab audio coordination via BroadcastChannel | ✅ |
+| Markdown-rich responses — code blocks w/ copy, tables, links, headings | ✅ |
+| Analytics dashboard — 6 KPI cards, full tool/agent/memory breakdowns | ✅ |
+| Slash commands — /help /clear /voice /theme /memory /scan /tasks /cost | ✅ |
+| Animated sub-agent overlay — live tool blips, expand/collapse, draggable | ✅ |
+| Holographic web UI with 5 themes, floating windows, live agent roster, smooth transitions | ✅ |
 | One-command startup with preflight checks | ✅ |
 
 ---
@@ -47,6 +55,7 @@ No per-call API charges for speech. No cloud dependency for audio. No heavy fram
 ```
   47 tools     5 sub-agents     6 heartbeat checks     40 REST endpoints
   20 vuln checks   13 state types   3 skills    5 themes    2 profiles
+  25 Piper voices   12 Kokoro voices   7 personalities   11 live settings
 ```
 
 ---
@@ -88,10 +97,10 @@ Dela scans its own codebase against the OWASP Top 10 for LLM Applications 2025 a
 Five specialist agents (researcher, presenter, secretary, workflow_designer, system_expert) each with their own SOUL — a system prompt + tool whitelist. They collaborate via a blackboard architecture with a DAG scheduler for parallel execution. The secretary coordinates, specialists write sections, a governance gate requires user approval before execution. Agent status is tracked live: ready (green), busy (amber, pulsing), error (red).
 
 ### Token-Smart Model Routing
-"Why burn premium tokens on 'what is 2+2'?" The model router classifies each request by complexity — input length, code blocks, keywords, tool usage — and routes trivial tasks to a cheap model, complex tasks to a premium model. Configurable via live settings. Off by default, opt-in with one toggle.
+"Why burn premium tokens on 'what is 2+2'?" The model router classifies each request by complexity — input length, code blocks, keywords, tool usage — and routes trivial tasks to a fast model, complex tasks to a premium model. Each tier is a dropdown populated from `/api/models`. Enabled by default, disable with one toggle.
 
 ### Holographic Web UI
-A 2D canvas galaxy engine — no WebGL dependency. Particles swirl around a central core, color shifts with system state. Floating draggable windows. Glassmorphism panels. Five themes. Live stats in every corner: heartbeat status, tool count, API uplink health, agent roster with status dots. Slide-in panels for security, analytics, workflows, settings, memory, state browser, audit trail, tasks.
+A 2D canvas particle galaxy — particles swirl and pulse with real audio amplitude via Web Audio API. Color shifts with system state. Idle mode: ultra-compact 3-icon bar (💬 chat · 🎤 voice · ● heartbeat) that smoothly expands into a full input panel. Floating draggable windows. Glassmorphism panels. Floating icon buttons for all 12 panels. RichMessage markdown rendering: code blocks with copy, tables, headings, iframes. Animated sub-agent overlay with live tool blips. Five themes. Slash commands in the input bar. Smooth fade transitions between idle and conversation states.
 
 ### Seams Everywhere
 The provider, STT, TTS, live config, and tracing are each behind a thin module. Swap any of them by rewriting one file. Ollama works today because it exposes an OpenAI-compatible endpoint. New tools, agents, skills, channels, and heartbeat checks are each one file — the brain never changes.

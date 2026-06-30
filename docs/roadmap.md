@@ -35,6 +35,23 @@ The baseline (Tiers 0-6) and all roadmap steps are complete:
 - [x] **Workflow designer UI** — visual editor with all 5 agents, run button, results
 - [x] **Analytics dashboard** — model calls, cost, tool usage, gate decisions
 - [x] **GitHub Pages docs** — full documentation site with search and navigation
+- [x] **Kokoro TTS** — second TTS provider, 12 US/UK voices at 24kHz (default)
+- [x] **Piper voice auto-detection** — 25 voices auto-download from HuggingFace on first use
+- [x] **Personality matrix** — 7 presets (Friendly, Professional, Energetic, Calm, British, Technical, Creative) injected into system prompt
+- [x] **Dynamic HITL gate** — impact-based confirmation scoring (0-10), configurable threshold
+- [x] **RichMessage component** — markdown rendering with code copy, tables, headings, iframe previews
+- [x] **Slash commands** — /help /clear /voice /theme /memory /scan /tasks /cost
+- [x] **Sub-agent overlay** — animated draggable overlay with live tool blips during agent execution
+- [x] **Idle chat redesign** — ultra-compact 3-icon bar (💬🎤●), smooth expand with cubic-bezier animation
+- [x] **Panel chips redesign** — floating emoji icon buttons without boxes, grouped with spacers
+- [x] **Conversation transitions** — smooth fade on TopStrip, Dock, and conv-overlay appearance
+- [x] **Multi-tab audio coordination** — BroadcastChannel to ensure only one tab speaks
+- [x] **Pulse-audio sync** — particle canvas reads real RMS amplitude from AnalyserNode
+- [x] **Model router defaults on** — FAST/PREMIUM MODEL dropdowns populated from `/api/models`
+- [x] **Thread-safe memory** — locking, atomic writes (temp+rename), dedup, list_facts/search_facts tools
+- [x] **Memory search UI** — search bar + category filter in MemoryPanel
+- [x] **Project panels** — collapsible projects with status tabs, agent steps, usefulness audit
+- [x] **Browser-based STT/TTS** — MediaRecorder + AudioBuffer.decodeAudioData via Web Audio API
 
 ## Future Ideas
 

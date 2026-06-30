@@ -8,26 +8,27 @@ nav_order: 5
 Fully local, no API keys, no per-call cost.
 
 | Component | Technology | Role |
-|---|---|---|
+|---|---|---|---|
 | Speech-to-text | faster-whisper (Whisper on CTranslate2) | `stt.py` — transcribe audio to text |
-| Text-to-speech | Piper (neural, ONNX) | `tts.py` — synthesize and play text aloud |
+| Text-to-speech | Kokoro (default, 12 voices) + Piper (25 voices) | `tts.py` / `tts_kokoro.py` — synthesize and play text aloud |
 | Voice activity detection | webrtcvad | `vad.py` — detect speech for duplex/barge-in |
 | EoT detector | State machine (custom) | `eot.py` — smart turn-taking |
 | Audio I/O | sounddevice + numpy | mic capture and speaker playback |
-| Web audio | MediaRecorder + WAV | `useVoiceRecorder.js` / `useVoiceTTS.js` |
+| Web audio | MediaRecorder + WAV + AudioBuffer | `useVoiceRecorder.js` / `useVoiceTTS.js` |
 
 ## GPU Notes
 
 - **STT (faster-whisper):** Runs on CUDA (float16) if NVIDIA CUDA Toolkit DLLs are available. The pip wheels provide them. If unavailable, set `DELA_WHISPER_DEVICE=cpu`.
-- **TTS (Piper):** Runs on CPU via ONNX Runtime. Piper is lightweight enough that GPU isn't needed.
-- **Model downloads:** Whisper `small.en` (~244 MB) and Piper voice (~60 MB) are downloaded automatically on first use and cached under `models/`.
+- **TTS (Kokoro):** Default provider. 82M-param ONNX model, 24kHz output. 12 voices: 6 US (af_heart, af_bella, af_sarah, am_adam, am_michael, af_nicole) + 6 UK (bf_emma, bf_isabella, bm_george, bm_lewis, af_sky, bm_daniel). Auto-downloads on first use (~330MB).
+- **TTS (Piper):** Fallback provider. Runs on CPU via ONNX Runtime. 25 voices across multiple languages. Auto-detects voice paths from HuggingFace pattern. ~60MB per voice, downloaded on first use.
+- **Model downloads:** Whisper `small.en` (~244 MB) and voice models are downloaded automatically on first use and cached under `models/`.
 
 ## Web Voice I/O
 
 The web UI supports voice through REST endpoints (no WebSocket needed for audio):
 
 - **Recording:** `MediaRecorder` captures mic audio → `POST /api/voice/stt` (audio/webm or WAV) → `wav_to_pcm()` resamples to 16kHz → faster-whisper transcribes → returns text
-- **Playback:** Text → `POST /api/voice/tts` → Piper synthesizes → WAV bytes → browser `Audio` element plays
+- **Playback:** Text → `POST /api/voice/tts` → TTS provider synthesizes → WAV bytes → browser `AudioContext.decodeAudioData()` + BufferSource (not HTML5 Audio — for proper Web Audio routing to AnalyserNode for visual sync). Multi-tab coordination via BroadcastChannel ensures only one tab is the speaker.
 - **Sentence streaming:** TTS splits text into sentences and plays them sequentially for lower latency
 - **ffmpeg fallback:** If the browser sends non-WAV audio (webm/opus), ffmpeg converts it
 

@@ -310,8 +310,8 @@ export default function App() {
       <div className="corner-bracket bl" />
       <div className="corner-bracket br" />
 
-      {/* Top strip — only when not idle (idle view has its own input + logo) */}
-      {!isIdle && (
+      {/* Top strip — smooth transition between idle and conversation */}
+      <div style={{ opacity: isIdle ? 0 : 1, transform: isIdle ? 'translateY(-8px)' : 'translateY(0)', transition: 'opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)', pointerEvents: isIdle ? 'none' : 'auto' }}>
         <TopStrip
           state={orbState}
           cost={cost}
@@ -327,7 +327,7 @@ export default function App() {
             if (!next) ttsStop()
           }}
         />
-      )}
+      </div>
 
       {/* Skip navigation link for keyboard users */}
       <a href="#idle-input" className="skip-link">Skip to input</a>
@@ -429,10 +429,9 @@ export default function App() {
       {/* Voice HUD */}
       <VoiceHud speaking={ttsSpeaking} caption={caption} recording={recording} transcribing={transcribing} />
 
-      {/* Conversation overlay — minimal, full details in Stream panel */}
-      {!isIdle && (conversation.length > 0 || currentStream || toolStatus) && (
-        <div className="conv-overlay">
-          {conversation.slice(-8).map(msg => (
+      {/* Conversation overlay — smooth fade in/out */}
+      <div className={`conv-overlay${!isIdle && (conversation.length > 0 || currentStream || toolStatus) ? ' visible' : ''}`}>
+        {conversation.slice(-8).map(msg => (
             <div
               key={msg.id}
               className={`conv-msg ${msg.role}`}
@@ -484,10 +483,9 @@ export default function App() {
             </div>
           )}
         </div>
-      )}
 
-      {/* Dock */}
-      {!isIdle && (
+      {/* Dock — smooth transition */}
+      <div style={{ opacity: isIdle ? 0 : 1, transform: isIdle ? 'translateY(12px)' : 'translateY(0)', transition: 'opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)', pointerEvents: isIdle ? 'none' : 'auto' }}>
         <Dock
           state={orbState}
           panels={panels}
@@ -498,7 +496,7 @@ export default function App() {
           noticeCount={noticeCount}
           onOpenNotices={() => openLocalPanel('notices')}
         />
-      )}
+      </div>
 
       {/* Floating windows */}
       {panels.hive.open && (
@@ -554,7 +552,7 @@ export default function App() {
             message={panelMessage}
             notices={notices}
             onDismiss={dismissNotice}
-          />
+        />
         )}
         {panel === 'agents' && (
           <AgentRosterPanel key="agents" onClose={handleClose} message={panelMessage} />
