@@ -1,4 +1,5 @@
 import { FloatWindow } from './FloatWindow'
+import { RichMessage } from './RichMessage'
 
 export function StreamWindow({ panel, onClose, onFocus, onDragMove, conversation, currentStream, toolStatus, systemState }) {
   const recent = conversation.slice(-20)
@@ -55,25 +56,13 @@ export function StreamWindow({ panel, onClose, onFocus, onDragMove, conversation
             )}
           </div>
           {content && (
-            <div style={{
-              maxHeight: 70,
-              overflow: 'hidden',
-              whiteSpace: 'pre-wrap',
-              opacity: 0.9,
-            }}>
-              {content.slice(0, 300)}{content.length > 300 ? '…' : ''}
+            <div style={{ maxHeight: 200, overflow: 'auto' }}>
+              <RichMessage content={content} maxHeight={200} />
             </div>
           )}
           {isTool && (
-            <div style={{
-              maxHeight: 50,
-              overflow: 'hidden',
-              whiteSpace: 'pre-wrap',
-              opacity: 0.85,
-              fontSize: 10,
-              color: 'var(--amber)',
-            }}>
-              {content.slice(0, 200)}
+            <div style={{ maxHeight: 120, overflow: 'auto', fontSize: 10, color: 'var(--amber)', opacity: 0.85 }}>
+              <RichMessage content={content} maxHeight={120} />
             </div>
           )}
         </div>
