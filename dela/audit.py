@@ -119,6 +119,9 @@ def analytics() -> dict:
             except ValueError:
                 continue  # malformed line — skip
 
+            if not rest or len(rest) < 2:
+                continue  # empty or too short
+
             if rest.startswith("TOOL "):
                 result["tool_calls"] += 1
                 # Extract tool name
