@@ -287,7 +287,7 @@ export function RichMessage({ content, maxHeight }) {
           {show && (
             <div style={{ marginTop: 4, borderRadius: 6, overflow: 'hidden', border: '1px solid var(--border)', maxHeight: 300 }}>
               <iframe src={url} style={{ width: '100%', height: 300, border: 'none', background: '#fff' }}
-                sandbox="allow-scripts allow-same-origin" title="URL preview" />
+                sandbox="" title="URL preview" referrerPolicy="no-referrer" loading="lazy" />
             </div>
           )}
         </div>

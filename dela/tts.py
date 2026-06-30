@@ -31,18 +31,25 @@ def _voice_path(name: str) -> str:
     Format: {lang_code}-{voice}-{quality} → {lang_family}/{lang_code}/{voice}/{quality}/{full_name}
     e.g. en_US-amy-medium → en/en_US/amy/medium/en_US-amy-medium
     """
-    parts = name.rsplit("-", 1)
+    # Sanitize: only allow alphanumeric, dash, underscore — prevent traversal
+    safe = "".join(c for c in name if c.isalnum() or c in "-_.")
+    if safe != name or ".." in name:
+        raise ValueError(f"Invalid Piper voice name: {name}")
+    parts = safe.rsplit("-", 1)
     if len(parts) != 2:
-        return name
-    voice_quality = parts[1]  # medium, high, low
-    voice_name = parts[0]     # en_US-amy
+        raise ValueError(f"Cannot parse Piper voice name: {name}")
+    voice_quality = parts[1].lower()
+    voice_name = parts[0]
     name_parts = voice_name.split("-", 1)
     if len(name_parts) != 2:
-        return name
-    lang_code = name_parts[0]       # en_US
-    voice_short = name_parts[1]     # amy
-    lang_family = lang_code.split("_")[0]  # en
-    return f"{lang_family}/{lang_code}/{voice_short}/{voice_quality}/{name}"
+        raise ValueError(f"Cannot parse Piper voice name: {name}")
+    lang_code = name_parts[0]
+    voice_short = name_parts[1].lower()
+    lang_family = lang_code.split("_")[0].lower()
+    # Validate quality is a known value
+    if voice_quality not in ("low", "medium", "high"):
+        raise ValueError(f"Unknown Piper voice quality: {voice_quality}")
+    return f"{lang_family}/{lang_code}/{voice_short}/{voice_quality}/{safe}"
 
 
 def _voice_dir() -> Path:

@@ -255,12 +255,13 @@ def api_voices():
 
 @app.post("/api/audit/{asset_type}")
 def api_audit_asset(asset_type: str, body: dict):
-    """Audit a tool, agent, or workflow before deployment.
-    POST /api/audit/tool  {"name":"...", "description":"...", "parameters":{...}, "requires_confirmation":bool}
-    POST /api/audit/agent {"name":"...", "description":"...", "tools":[...]}
-    POST /api/audit/workflow {"name":"...", "description":"...", "steps":[...]}
-    """
+    """Audit a tool, agent, or workflow before deployment."""
     from dela.auditor import audit_tool, audit_agent, audit_workflow
+
+    if asset_type not in ("tool", "agent", "workflow"):
+        return {"ok": False, "error": f"Unknown asset type: {asset_type}"}
+
+    body = {k: v for k, v in (body or {}).items() if k in ("name", "description", "parameters", "requires_confirmation", "tools", "steps")}
 
     if asset_type == "tool":
         report = audit_tool(

@@ -257,9 +257,15 @@ def _to_snake(name: str) -> str:
     return re.sub(r'(?<!^)(?=[A-Z])', '_', name).lower()
 
 
+_MAX_NAME_LEN = 200
+_MAX_DESC_LEN = 2000
+
+
 def audit_tool(name: str, description: str = "", parameters: dict | None = None,
                requires_confirmation: bool = False) -> AuditReport:
     """Audit a tool before deployment. Returns structured report with scores."""
+    name = (name or "")[:_MAX_NAME_LEN]
+    description = (description or "")[:_MAX_DESC_LEN]
     report = AuditReport(asset_type="tool", asset_name=name)
     all_findings = []
 
@@ -282,6 +288,8 @@ def audit_tool(name: str, description: str = "", parameters: dict | None = None,
 
 def audit_agent(name: str, description: str = "", tools: list[str] | None = None) -> AuditReport:
     """Audit an agent before deployment."""
+    name = (name or "")[:_MAX_NAME_LEN]
+    description = (description or "")[:_MAX_DESC_LEN]
     report = AuditReport(asset_type="agent", asset_name=name)
     all_findings = []
 
@@ -317,6 +325,8 @@ def audit_agent(name: str, description: str = "", tools: list[str] | None = None
 
 def audit_workflow(name: str, description: str = "", steps: list[dict] | None = None) -> AuditReport:
     """Audit a workflow before deployment."""
+    name = (name or "")[:_MAX_NAME_LEN]
+    description = (description or "")[:_MAX_DESC_LEN]
     report = AuditReport(asset_type="workflow", asset_name=name)
     all_findings = []
 
