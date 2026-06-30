@@ -24,10 +24,25 @@ _voice = None
 _voice_name: str | None = None
 _voice_lock = threading.Lock()
 _VOICE_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/main"
-_VOICE_PATHS = {
-    "en_US-amy-medium": "en/en_US/amy/medium/en_US-amy-medium",
-    "en_US-ryan-medium": "en/en_US/ryan/medium/en_US-ryan-medium",
-}
+
+
+def _voice_path(name: str) -> str:
+    """Auto-generate the HuggingFace path from a Piper voice name.
+    Format: {lang_code}-{voice}-{quality} → {lang_family}/{lang_code}/{voice}/{quality}/{full_name}
+    e.g. en_US-amy-medium → en/en_US/amy/medium/en_US-amy-medium
+    """
+    parts = name.rsplit("-", 1)
+    if len(parts) != 2:
+        return name
+    voice_quality = parts[1]  # medium, high, low
+    voice_name = parts[0]     # en_US-amy
+    name_parts = voice_name.split("-", 1)
+    if len(name_parts) != 2:
+        return name
+    lang_code = name_parts[0]       # en_US
+    voice_short = name_parts[1]     # amy
+    lang_family = lang_code.split("_")[0]  # en
+    return f"{lang_family}/{lang_code}/{voice_short}/{voice_quality}/{name}"
 
 
 def _voice_dir() -> Path:
@@ -40,9 +55,9 @@ def _ensure_voice() -> Path:
     """Download the .onnx + .json for the configured voice if missing."""
     from dela import live_config
     name = live_config.get("piper_voice") or config.PIPER_VOICE
-    rel = _VOICE_PATHS.get(name, name)
-    onnx = _voice_dir() / f"{name}.onnx"
-    cfg = _voice_dir() / f"{name}.onnx.json"
+    rel = _voice_path(name)
+    onnx_path = _voice_dir() / f"{name}.onnx"
+    cfg_path = _voice_dir() / f"{name}.onnx.json"
 
     def _download(url: str, dest: Path, label: str, expected_min_bytes: int = 1000) -> None:
         if dest.exists():
@@ -66,9 +81,9 @@ def _ensure_voice() -> Path:
                 raise RuntimeError(f"Downloaded config is not JSON — possible corruption")
         dest.write_bytes(data)
 
-    _download(f"{_VOICE_BASE}/{rel}.onnx", onnx, "voice", expected_min_bytes=50_000_000)
-    _download(f"{_VOICE_BASE}/{rel}.onnx.json", cfg, "config", expected_min_bytes=100)
-    return onnx
+    _download(f"{_VOICE_BASE}/{rel}.onnx", onnx_path, "voice", expected_min_bytes=50_000_000)
+    _download(f"{_VOICE_BASE}/{rel}.onnx.json", cfg_path, "config", expected_min_bytes=100)
+    return onnx_path
 
 
 def _piper():
