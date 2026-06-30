@@ -217,7 +217,6 @@ def _scan_dependencies() -> list[Finding]:
             result = subprocess.run(
                 [npm_cmd, "audit", "--json"],
                 capture_output=True, text=True, timeout=60, cwd=str(npm_dir),
-                shell=True,
             )
             if result.stdout:
                 data = json.loads(result.stdout)

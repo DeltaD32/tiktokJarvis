@@ -155,10 +155,9 @@ def preflight() -> bool:
         warn("Frontend node_modules missing — running npm install...")
         if NPM:
             result = subprocess.run(
-                [NPM, "install"],
+                [NPM, "install", "--no-audit", "--no-fund"],
                 cwd=str(FRONTEND),
                 capture_output=True, text=True,
-                shell=True,
             )
             if result.returncode == 0:
                 ok("npm install completed")
