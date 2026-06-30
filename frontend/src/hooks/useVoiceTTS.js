@@ -52,7 +52,7 @@ export function getVoiceAmplitude() {
 
 // Cross-tab coordination: only one tab plays audio at a time
 let _speakerChannel = null
-let _isSpeaker = false
+let _isSpeaker = true  // first tab is the speaker by default
 
 function _ensureChannel() {
   if (_speakerChannel) return
@@ -75,7 +75,8 @@ function _claimSpeaker() {
 }
 
 function _releaseSpeaker() {
-  _isSpeaker = false
+  // Broadcast that speaker role is available — other tabs can take over
+  // This tab remains the speaker until another tab claims it
   try { _speakerChannel?.postMessage('stopped') } catch (_) {}
 }
 
