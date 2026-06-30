@@ -537,6 +537,7 @@ async def api_voice_stt(request: Request):
 async def api_voice_tts(body: dict):
     """Synthesize text to WAV audio for browser playback."""
     from dela.tts import synthesize_wav as piper_synthesize, TTSError
+    from dela import live_config, config
 
     text = body.get("text", "")
     if not text.strip():
