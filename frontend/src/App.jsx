@@ -337,25 +337,31 @@ export default function App() {
       {/* Skip navigation link for keyboard users */}
       <a href="#idle-input" className="skip-link">Skip to input</a>
 
-      {/* Data panel buttons — right side, below top strip when active */}
-      <div style={{ position: 'absolute', top: isIdle ? 14 : 50, right: 24, zIndex: 7, display: 'flex', gap: 3, flexWrap: 'wrap', justifyContent: 'flex-end', maxWidth: 320 }}>
-        {[
-          ['analytics', 'ANALYTICS'],
-          ['tools', 'TOOLS'],
-          ['workflows', 'WORKFLOWS'],
-          ['notices', 'NOTICES' + (noticeCount > 0 ? ' (' + noticeCount + ')' : '')],
-          ['agents', 'AGENTS'],
-          ['settings', 'SETTINGS'],
-          ['security', 'SECURITY'],
-          ['memory', 'MEMORY'],
-          ['state', 'STATE'],
-          ['audit', 'AUDIT'],
-          ['projects', 'PROJECTS'],
-        ].map(([panel, label]) => (
-          <button key={panel} className="data-btn" onClick={() => openLocalPanel(panel)} aria-label={`Open ${label} panel`}>
-            {label}
-          </button>
-        ))}
+      {/* Data panel buttons — grouped by category */}
+      <div style={{ position: 'absolute', top: isIdle ? 14 : 50, right: 24, zIndex: 7, display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        {/* Monitor group */}
+        <div className="btn-group">
+          <span className="btn-group-label">Monitor</span>
+          <button className="data-btn" onClick={() => openLocalPanel('analytics')} aria-label="Analytics" title="Analytics">📊</button>
+          <button className="data-btn" onClick={() => openLocalPanel('audit')} aria-label="Audit" title="Audit">📋</button>
+          <button className="data-btn" onClick={() => openLocalPanel('notices')} aria-label="Notices" title="Notices">{noticeCount > 0 ? `🔔${noticeCount}` : '🔕'}</button>
+          <button className="data-btn" onClick={() => openLocalPanel('security')} aria-label="Security" title="Security">🛡️</button>
+        </div>
+        {/* Manage group */}
+        <div className="btn-group">
+          <span className="btn-group-label">Manage</span>
+          <button className="data-btn" onClick={() => openLocalPanel('memory')} aria-label="Memory" title="Memory">🧠</button>
+          <button className="data-btn" onClick={() => openLocalPanel('state')} aria-label="State" title="State">🗂️</button>
+          <button className="data-btn" onClick={() => openLocalPanel('projects')} aria-label="Projects" title="Projects">📁</button>
+          <button className="data-btn" onClick={() => openLocalPanel('workflows')} aria-label="Workflows" title="Workflows">⚙️</button>
+        </div>
+        {/* System group */}
+        <div className="btn-group">
+          <span className="btn-group-label">System</span>
+          <button className="data-btn" onClick={() => openLocalPanel('agents')} aria-label="Agents" title="Agents">🤖</button>
+          <button className="data-btn" onClick={() => openLocalPanel('tools')} aria-label="Tools" title="Tools">🔧</button>
+          <button className="data-btn" onClick={() => openLocalPanel('settings')} aria-label="Settings" title="Settings">⚡</button>
+        </div>
       </div>
 
       {/* Idle view */}
@@ -406,70 +412,55 @@ export default function App() {
               </div>
             )
           })}
-          <div className="idle-center" style={{ maxWidth: 500, margin: '0 auto' }}>
+          <div className="idle-center" style={{ maxWidth: 380, margin: '0 auto' }}>
             <div className="idle-chat-panel">
               <div>
                 <div className="idle-logo">DELA</div>
-                <div className="idle-subtitle">all systems nominal — awaiting your directive</div>
+                <div className="idle-subtitle">all systems nominal</div>
               </div>
-              <div className="idle-input-wrap">
-                <span className="idle-input-prompt">&gt;</span>
+              <div className="idle-input-wrap" style={{ padding: '2px 8px' }}>
+                <span className="idle-input-prompt" style={{ fontSize: 14 }}>&gt;</span>
                 <input
                   id="idle-input"
                   className="idle-input"
+                  style={{ fontSize: 13, padding: '4px 0' }}
                   value={input}
                   onChange={e => setInput(e.target.value)}
                   onKeyDown={handleKey}
-                  placeholder="Type a message or /command..."
+                  placeholder="Message or /command..."
                   autoFocus
                 />
                 <button
                   className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
                   onClick={handleVoiceToggle}
                   aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
+                  style={{ fontSize: 14, padding: '2px 5px', minWidth: 28 }}
                 >
-                  {transcribing ? '...' : recording ? 'STOP' : 'MIC'}
+                  {transcribing ? '···' : recording ? '⏹' : '🎤'}
                 </button>
-                <button type="button" className="execute-btn" onClick={handleSend}>EXECUTE</button>
+                <button type="button" className="execute-btn" onClick={handleSend} style={{ fontSize: 12, padding: '3px 8px', minWidth: 32 }}>↵</button>
               </div>
               {voiceError && (
-                <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)', marginTop: 6 }}>
-                  Voice error: {voiceError}
+                <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)', marginTop: 4, textAlign: 'center' }}>
+                  {voiceError}
                 </div>
               )}
               <div className="idle-extras">
                 <div className="chip-row">
                   <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
-                  <button className="chip" onClick={() => { sendMessage('Search your memory for facts about me'); setInput('') }}>Search memory</button>
+                  <button className="chip" onClick={() => { sendMessage('Search memory'); setInput('') }}>Search memory</button>
                   <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
                   <button
                     className={`chip ${voiceEnabled ? 'active' : ''}`}
-                    onClick={() => {
-                      const next = !voiceEnabled
-                      setVoiceEnabled(next)
-                      if (!next) ttsStop()
-                    }}
+                    onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (!next) ttsStop() }}
                   >
-                    {voiceEnabled ? 'VOICE ON' : 'VOICE OFF'}
+                    {voiceEnabled ? '🔊 ON' : '🔇'}
                   </button>
                 </div>
-                <div style={{ fontSize: 9, color: 'var(--text-faint)', textAlign: 'center', marginTop: 6, fontFamily: "'JetBrains Mono', monospace", opacity: 0.5 }}>
-                  /help /clear /voice /theme /memory /settings /scan /tasks /cost
+                <div style={{ fontSize: 8, color: 'var(--text-faint)', textAlign: 'center', marginTop: 4, fontFamily: "'JetBrains Mono', monospace", opacity: 0.4 }}>
+                  /help /clear /voice /theme /memory /agents /scan
                 </div>
               </div>
-            </div>
-            {/* Agent status summary — click AGENTS button for full roster */}
-            <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 4 }}>
-              {agentInfo.agents && agentInfo.agents.slice(0, 5).map(a => {
-                const live = agentStatus[a.name]
-                const status = live?.state || a.status
-                return (
-                  <span key={a.name} style={{ fontSize: 9, color: status === 'busy' ? 'var(--amber)' : status === 'ready' ? 'var(--text-dim)' : 'var(--text-dim)', display: 'flex', alignItems: 'center', gap: 3 }}>
-                    <span style={{ width: 5, height: 5, borderRadius: '50%', display: 'inline-block', background: status === 'busy' ? 'var(--amber)' : status === 'ready' ? 'var(--green)' : 'var(--text-faint)' }} />
-                    {a.name}
-                  </span>
-                )
-              })}
             </div>
           </div>
         </div>

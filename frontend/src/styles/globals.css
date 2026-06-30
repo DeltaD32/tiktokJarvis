@@ -1154,12 +1154,44 @@ textarea.chat-input::placeholder, input.chat-input::placeholder { color: var(--t
 .idle-chat-panel:hover .idle-extras,
 .idle-chat-panel:focus-within .idle-extras {
   opacity: 1;
-  max-height: 80px;
+  max-height: 60px;
 }
 .idle-chat-panel:hover .idle-input-wrap,
 .idle-chat-panel:focus-within .idle-input-wrap {
-  transform: scale(1.02);
+  transform: scale(1.01);
 }
-.idle-input-wrap {
-  transition: transform 0.2s ease;
+
+/* Button groups (top-right panel buttons) */
+.btn-group {
+  display: flex;
+  gap: 1px;
+  align-items: center;
+  border: 1px solid rgba(255,255,255,0.04);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.btn-group-label {
+  font-size: 7px;
+  letter-spacing: 0.1em;
+  color: var(--text-faint);
+  padding: 0 4px;
+  font-family: 'JetBrains Mono', monospace;
+  opacity: 0;
+  transition: opacity 0.2s;
+  white-space: nowrap;
+}
+.btn-group:hover .btn-group-label {
+  opacity: 1;
+}
+.btn-group .data-btn {
+  font-size: 10px;
+  padding: 3px 5px;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--text-dim);
+}
+.btn-group .data-btn:hover {
+  color: var(--accent);
+  background: rgba(0,240,255,0.06);
 }
