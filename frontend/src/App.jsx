@@ -353,74 +353,71 @@ export default function App() {
       {isIdle && (
         <div className="idle-view">
           <div className="idle-center">
-            <div className="idle-chat-panel">
+            <div className={`idle-chat-panel${idleExpanded ? ' expanded' : ''}`}>
               <div className="idle-logo">DELA</div>
-              {!idleExpanded ? (
-                <div className="idle-bar-collapsed">
-                  <button className="idle-icon-btn" onClick={() => setIdleExpanded(true)} title="Chat">
-                    💬
-                  </button>
+              <div className="idle-bar-collapsed">
+                <button className="idle-icon-btn" onClick={() => setIdleExpanded(true)} title="Chat">
+                  💬
+                </button>
+                <button
+                  className={`idle-icon-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
+                  onClick={handleVoiceToggle}
+                  title={recording ? 'Stop' : 'Voice'}
+                >
+                  {transcribing ? '···' : recording ? '⏹' : '🎤'}
+                </button>
+                <span
+                  className={`idle-hb ${heartbeatActive ? 'active' : ''}`}
+                  title={heartbeatActive ? 'Heartbeat active' : 'Heartbeat paused'}
+                />
+              </div>
+              <div className="idle-bar-expanded">
+                <div className="idle-subtitle">all systems nominal</div>
+                <div className="idle-input-wrap" style={{ padding: '8px 12px' }}>
+                  <span className="idle-input-prompt" style={{ fontSize: 14 }}>&gt;</span>
+                  <input
+                    id="idle-input"
+                    className="idle-input"
+                    style={{ fontSize: 13, padding: '4px 0' }}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKey}
+                    placeholder="Message or /command..."
+                    autoFocus
+                  />
                   <button
-                    className={`idle-icon-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
+                    className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
                     onClick={handleVoiceToggle}
-                    title={recording ? 'Stop' : 'Voice'}
+                    aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
+                    style={{ fontSize: 14, padding: '4px 8px', minWidth: 28 }}
                   >
                     {transcribing ? '···' : recording ? '⏹' : '🎤'}
                   </button>
-                  <span
-                    className={`idle-hb ${heartbeatActive ? 'active' : ''}`}
-                    title={heartbeatActive ? 'Heartbeat active' : 'Heartbeat paused'}
-                  />
+                  <button type="button" className="exec-btn-sm" onClick={handleSend}>↵</button>
+                  <button className="idle-collapse-btn" onClick={() => setIdleExpanded(false)} title="Collapse">×</button>
                 </div>
-              ) : (
-                <>
-                  <div className="idle-subtitle">all systems nominal</div>
-                  <div className="idle-input-wrap" style={{ padding: '8px 12px' }}>
-                    <span className="idle-input-prompt" style={{ fontSize: 14 }}>&gt;</span>
-                    <input
-                      id="idle-input"
-                      className="idle-input"
-                      style={{ fontSize: 13, padding: '4px 0' }}
-                      value={input}
-                      onChange={e => setInput(e.target.value)}
-                      onKeyDown={handleKey}
-                      placeholder="Message or /command..."
-                      autoFocus
-                    />
+                {voiceError && (
+                  <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)', marginTop: 4, textAlign: 'center' }}>
+                    {voiceError}
+                  </div>
+                )}
+                <div className="idle-extras">
+                  <div className="chip-row">
+                    <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
+                    <button className="chip" onClick={() => { sendMessage('Search memory'); setInput('') }}>Search memory</button>
+                    <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
                     <button
-                      className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
-                      onClick={handleVoiceToggle}
-                      aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
-                      style={{ fontSize: 14, padding: '4px 8px', minWidth: 28 }}
+                      className={`chip ${voiceEnabled ? 'active' : ''}`}
+                      onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (!next) ttsStop() }}
                     >
-                      {transcribing ? '···' : recording ? '⏹' : '🎤'}
+                      {voiceEnabled ? '🔊 ON' : '🔇'}
                     </button>
-                    <button type="button" className="exec-btn-sm" onClick={handleSend}>↵</button>
-                    <button className="idle-collapse-btn" onClick={() => setIdleExpanded(false)} title="Collapse">×</button>
                   </div>
-                  {voiceError && (
-                    <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)', marginTop: 4, textAlign: 'center' }}>
-                      {voiceError}
-                    </div>
-                  )}
-                  <div className="idle-extras">
-                    <div className="chip-row">
-                      <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
-                      <button className="chip" onClick={() => { sendMessage('Search memory'); setInput('') }}>Search memory</button>
-                      <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
-                      <button
-                        className={`chip ${voiceEnabled ? 'active' : ''}`}
-                        onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (!next) ttsStop() }}
-                      >
-                        {voiceEnabled ? '🔊 ON' : '🔇'}
-                      </button>
-                    </div>
-                    <div style={{ fontSize: 8, color: 'var(--text-faint)', textAlign: 'center', marginTop: 4, fontFamily: "'JetBrains Mono', monospace", opacity: 0.4 }}>
-                      /help /clear /voice /theme /memory /agents /scan
-                    </div>
+                  <div style={{ fontSize: 8, color: 'var(--text-faint)', textAlign: 'center', marginTop: 4, fontFamily: "'JetBrains Mono', monospace", opacity: 0.4 }}>
+                    /help /clear /voice /theme /memory /agents /scan
                   </div>
-                </>
-              )}
+                </div>
+              </div>
             </div>
           </div>
         </div>
