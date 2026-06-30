@@ -5,7 +5,7 @@ nav_order: 4
 
 # Tool Registry
 
-47 tools across 18 modules. Each tool is a self-contained function decorated with `@register(...)`.
+48 tools across 19 modules. Each tool is a self-contained function decorated with `@register(...)`.
 
 ## Adding a New Tool
 
@@ -66,6 +66,7 @@ def my_tool(args: dict) -> str:
 | `load_skill` | skills | No |
 | `list_skills` | skills | No |
 | `run_code` | code_exec | Yes |
+| `analyze_external_repo` | repo_analysis | No |
 
 ### Presentation Tools
 

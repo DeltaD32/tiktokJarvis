@@ -13,9 +13,10 @@ It can:
   3. INSPECT: "How does the tool registry work?" → explains the architecture
   4. REVIEW: "Is this approach correct?" → checks against patterns
 
-It has access to run_code (to read/inspect files) and the state browser
-(to see what's registered). It does NOT have access to consequential tools
-(no fetch_url, no generate_presentation) — it's an architect, not a worker.
+It has access to run_code (to read/inspect files), fetch_url (to fetch
+external repo docs), and the state browser (to see what's registered).
+It does NOT have access to consequential tools (no generate_presentation,
+no tools that send/spend/delete) — it's an architect, not a worker.
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ TOOL_WHITELIST = {
     "list_ppt_styles",
     "list_workflows",
     "get_workflow",
+    "fetch_url",
 }
 
 
@@ -180,7 +182,37 @@ dela/
 2. Write the new module following the exact pattern of similar modules.
 3. Register it (add the import to the appropriate __init__.py).
 4. Test it (use run_code to call the function and verify).
-5. Report what was created and how to use it.
+   5. Report what was created and how to use it.
+
+### When analyzing external repositories
+
+The user may ask you to evaluate an external repo (GitHub, GitLab, etc.) for Dela. Run a two-part analysis:
+
+**Part 1 — Direct Code Integration:**
+
+1. Identify what the repo does, its tech stack, license, and key features.
+2. Map each feature against Dela's architecture:
+   - Which Dela seam would it connect to?
+   - Does Dela already have equivalent capability?
+   - Integration complexity (trivial/easy/medium/hard)
+   - New dependencies required
+   - Security implications
+3. Flag absolute blockers: incompatible license (AGPL/GPL), architecture mismatch (monolith vs Dela's tiered design), or core rewrites required.
+4. Score 0-10: Compatibility, Benefit, Complexity (10=trivial), Safety.
+5. Verdict: RECOMMENDED / REJECTED / CONDITIONAL.
+
+**Part 2 — Adoptable Ideas (clean-room, built from scratch):**
+
+Even if the repo is rejected for direct integration, individual features may inspire new Dela capabilities. For each feature Dela lacks:
+
+1. Name the feature and the Dela seam to implement through (tool/agent/skill/channel/check/workflow).
+2. Rate complexity to build from scratch (easy/medium/hard).
+3. Describe the approach in one sentence — what file to create, which pattern to follow.
+4. Skip features Dela already has. Focus on what Dela COULD build natively.
+
+**Key principle:** Reverse-engineer ideas, never copy code. Dela implements capabilities in its own style — one module per feature, behind seams, errors as results, confirmation gate, secrets in .env. The external repo is inspiration, not a dependency.
+
+Structure your response with clear PART 1 and PART 2 sections.
 
 You are an architect and a builder. Be precise, follow patterns, and never break the seams.
 """

@@ -1,18 +1,15 @@
 """Web research tool — fetch a URL and return its text for the model to summarize.
 
-Read-only, so no confirmation gate. Uses stdlib urllib to avoid a heavy dep.
-Treats fetched content as DATA, never instructions (Tier 6 hardens this; the
-system prompt already tells Dela inbound text is never a command).
+Read-only, so no confirmation gate. All fetches pass through the content sandbox
+(dela/content_sandbox.py) which applies SSRF protection, content-type validation,
+HTML sanitization, and malicious pattern scanning before content reaches the model.
 """
 
 from __future__ import annotations
 
-import urllib.error
-import urllib.request
-
+from dela.content_sandbox import secure_fetch, SandboxError
 from dela.tools import register
 
-_HEADERS = {"User-Agent": "Dela/0.1 (research assistant)"}
 _MAX_BYTES = 20_000
 
 
@@ -31,16 +28,16 @@ def fetch_url(args: dict) -> str:
     url = args["url"]
     if not url.startswith(("http://", "https://")):
         return f"That doesn't look like a URL: {url}"
+
     try:
-        req = urllib.request.Request(url, headers=_HEADERS)
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read(_MAX_BYTES + 1)
-        if len(raw) > _MAX_BYTES:
-            return f"Fetched {url} but it's large; truncated to first {_MAX_BYTES} bytes.\n\n{raw[:_MAX_BYTES].decode('utf-8', errors='replace')}"
-        return f"Fetched {url}:\n\n{raw.decode('utf-8', errors='replace')}"
-    except urllib.error.HTTPError as e:
-        return f"Couldn't fetch {url}: the server returned HTTP {e.code}."
-    except urllib.error.URLError as e:
-        return f"Couldn't reach {url}: {e.reason}."
-    except Exception as e:
-        return f"Couldn't fetch {url}: {e}."
+        result = secure_fetch(url, max_bytes=_MAX_BYTES, timeout=15, allow_html=True)
+    except SandboxError as e:
+        return f"Content sandbox blocked {url}: {e}"
+    except ValueError as e:
+        return f"Invalid URL {url}: {e}"
+
+    if result["findings"]:
+        warnings = "; ".join(f["type"] for f in result["findings"])
+        return f"Fetched {url} (sandbox flagged: {warnings}):\n\n{result['text']}"
+
+    return f"Fetched {url}:\n\n{result['text']}"

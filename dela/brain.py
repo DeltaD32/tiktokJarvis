@@ -32,7 +32,8 @@ _MAX_TOOL_ROUNDS = 8  # safety: never spin forever if the model keeps calling to
 
 # Tools that return content from the outside world — their results get wrapped
 # with a DATA marker so the model can't be tricked into obeying injected text.
-_EXTERNAL_TOOLS = {"fetch_url"}
+# Content from these tools also passes through dela/content_sandbox.py.
+_EXTERNAL_TOOLS = {"fetch_url", "analyze_external_repo"}
 
 
 def _system_prompt() -> str:
@@ -187,13 +188,13 @@ def _run_one_tool(call: Any, history: list[Message]) -> Iterator[str]:
     raw_args = call.function.arguments or "{}"
 
     try:
-        args = json.loads(raw_args) if raw_args else {}
+        args: dict = json.loads(raw_args) if raw_args else {}
     except json.JSONDecodeError:
         result = f"Bad arguments for {name}: {raw_args}"
         history.append(
             {"role": "tool", "tool_call_id": call.id, "name": name, "content": result}
         )
-        audit.tool_call(name, args, result)
+        audit.tool_call(name, {}, result)
         yield f"[calling {name} — bad args]"
         return
 
@@ -265,7 +266,7 @@ def _run_one_tool_scoped(
         history.append(
             {"role": "tool", "tool_call_id": call.id, "name": name, "content": result}
         )
-        audit.tool_call(name, args, result)
+        audit.tool_call(name, {}, result)
         return
 
     tool = registry.scoped_get(name, whitelist)

@@ -126,6 +126,43 @@ Any tool with `requires_confirmation=True` must pass through the gate before run
 | `SilentConfirmer` | Heartbeat | Auto-deny (safe default) |
 | `TimeoutConfirmer` | Wraps any | Denies if no answer in time |
 
+---
+
+## Content Sandbox
+
+All internet-facing content passes through `dela/content_sandbox.py` — a mandatory
+security layer applied before any external byte reaches Dela's brain or storage.
+
+### Security Layers (applied in order)
+
+| Layer | What it does | Blocks |
+|---|---|---|
+| **SSRF protection** | Validates URLs, blocks private IPs, metadata endpoints, localhost | `10.x.x.x`, `192.168.x.x`, `169.254.169.254`, `127.0.0.1`, `.local`, `.internal` |
+| **Content-type validation** | Whitelist of safe MIME types; rejects binaries, executables, archives | `application/octet-stream`, `image/*`, `video/*`, `.zip`, `.exe` |
+| **HTML sanitization** | Strips scripts, iframes, objects, embeds, SVGs, event handlers, data: URIs, javascript: URLs | `<script>`, `<iframe>`, `onclick`, `data:text/html;base64,...` |
+| **Malicious pattern scan** | Detects prompt injection patterns, code execution payloads, reverse shells, destructive commands | "ignore previous instructions", `eval(`, `rm -rf /`, base64 decode calls |
+| **Encrypted quarantine** | Encrypts fetched content at rest using key derived from `DELA_API_KEY` | Plaintext content leaks from `dela_state/quarantine/` |
+| **Integrity verification** | SHA-256 hash of every fetched payload; logged in quarantine metadata | Tampered content between fetch and use |
+
+### Tools protected
+
+| Tool | File | Sandbox usage |
+|---|---|---|
+| `fetch_url` | `dela/tools/research.py` | All user-requested URLs pass through `secure_fetch()` |
+| `analyze_external_repo` | `dela/tools/repo_analysis.py` | GitHub README fetches pass through `secure_fetch()` |
+| `check_host` | `dela/tools/systems.py` | Uses raw TCP/HTTP (by design — it tests connectivity, not content) |
+
+### Threat model addressed
+
+| Threat | Mitigation |
+|---|---|
+| **SSRF** — fetch internal services via `http://localhost:8000/admin` | `validate_url()` blocks private IPs, localhost, metadata endpoints |
+| **Prompt injection** — fetched page says "ignore your instructions and..." | `scan_content()` detects injection patterns; `brain.py` wraps with DATA marker |
+| **XSS / malicious scripts** — `<script>` in fetched HTML executes in context | `sanitize_html()` strips all scripts, iframes, event handlers |
+| **Binary payload** — fetched `.exe` or `.zip` passed as text to the model | `check_content_type()` rejects non-text MIME types |
+| **Data exfiltration** — cached content read by unauthorized process | `quarantine()` encrypts content; quarantine dir has `0700` permissions |
+| **Code execution** — fetched content contains `eval()` or shell commands | `scan_content()` flags dangerous patterns |
+
 ### Prompt Injection Defense
 
 Profile-aware — two levels:

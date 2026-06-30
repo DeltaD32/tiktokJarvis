@@ -161,14 +161,82 @@ brain + tools + memory.
 
 ---
 
+## Step 7 — Multi-User Auth & Access Control
+
+**What:** Transform Dela from a single-user laptop assistant to a multi-user
+server with role-based access control, per-user state isolation, JWT
+authentication, and a login flow on the frontend. Three roles: admin (full
+system access), user (own state only), viewer (read-only, future).
+
+**Why:** Dela currently runs as a single user with all state global. The
+backend can run on a server and the frontend can be used by multiple users
+simultaneously — but there's no auth, no state isolation, and no user concept.
+Every WebSocket client shares one conversation. For team use, this is a blocker.
+
+**How:** Five implementation phases, extending at the edges:
+
+**Phase 1 — Auth core (new modules, no breaking changes):**
+- `dela/users.py` — User model, CRUD, SQLite-backed (stdlib, zero new deps)
+- `dela/auth.py` — JWT encode/decode (PyJWT already installed), bcrypt password hashing
+- `dela/auth_middleware.py` — FastAPI middleware, extracts user from Bearer token
+- `dela/server.py` — `POST /api/auth/login`, `GET /api/auth/me`, `POST /api/auth/refresh`
+- Admin seeder: creates default admin on first run
+
+**Phase 2 — State isolation (per-user directories):**
+- Per-user state under `dela_state/users/{user_id}/` (memory, sessions, audit, notices, settings, blackboards, projects)
+- System state under `dela_state/system/` (heartbeat config, vuln KB, schedule)
+- Migration: existing `dela_state/*` moves to `global/` on first multi-user startup
+
+**Phase 3 — Server multi-user wiring:**
+- Per-user `_clients` dict (user_id → WebSocket), `_histories`, `_confirm_callbacks`
+- WebSocket auth via `?token=<jwt>` query param
+- `WebSocketConfirmer` scoped to user (confirmation dialogs route to correct user)
+- Auth middleware on all `/api/*` routes; role checks on admin endpoints
+
+**Phase 4 — Frontend auth:**
+- `AuthContext.jsx` — login state, token storage, auth helpers
+- `LoginPage.jsx` — login form
+- `AdminPanel.jsx` — user management (admin only)
+- Token in WebSocket URL and all `fetch()` Authorization headers
+- Role-based UI: admin sees system config + user management; user sees own state only
+
+**Phase 5 — Polish:**
+- Rate limiting on auth endpoints (5 attempts / 15 min)
+- Token refresh flow
+- Audit log includes `[user:xxx]` prefix
+- Per-user cost tracking
+- Password change flow
+
+**Files:** `dela/users.py` (new), `dela/auth.py` (new), `dela/auth_middleware.py` (new),
+`dela/server.py` (major: per-user state, auth middleware, new endpoints),
+`dela/gate.py` (minor: `ask()` accepts `user_id`), `dela/brain.py` (minor:
+`respond()` accepts `user_id`), `dela/memory.py` (add `user_id` to all functions),
+`dela/sessions.py` (per-user session dirs), `dela/audit.py` (per-user log),
+`frontend/src/contexts/AuthContext.jsx` (new), `frontend/src/components/LoginPage.jsx`
+(new), `frontend/src/components/AdminPanel.jsx` (new), `frontend/src/App.jsx`
+(auth guard), `frontend/src/hooks/useDelaWS.js` (token in WS URL),
+`frontend/src/components/TopStrip.jsx` (user info + logout)
+
+**New deps:** `bcrypt` only (pure Python, ~30KB)
+
+**Detailed plan:** `docs/multi-user-auth-plan.md`
+
+**Verify:** Two users log in from separate browsers → chat simultaneously with
+isolated conversation histories → admin sees user management panel → user does
+not → confirmation dialogs route to correct user → audit log shows per-user
+entries.
+
+---
+
 ## Implementation Order
 
 1. **Tracing** (smallest, gives visibility for everything after)
-2. **Sub-agents** (highest architectural value, on the spec roadmap)
-3. **Skills** (builds on sub-agents, enhances context management)
-4. **MCP support** (opens up the external tool ecosystem)
-5. **Sandboxed execution** (high-value tool, usable by sub-agents)
-6. **IM channels** (new entry points, uses everything above)
+2. **Sub-agents** ✅ (done — 5 specialist agents)
+3. **Skills** ✅ (done — 3 skills, progressive loading)
+4. **MCP support** ✅ (done — MCP server bridging)
+5. **Sandboxed execution** ✅ (done — Docker/subprocess sandbox)
+6. **IM channels** ✅ (done — Telegram, Teams, Graph API)
+7. **Multi-user auth** (see Step 7 above)
 
 Each step ends with something runnable and a verification test. Don't start
 a step until the previous one works on its own.

@@ -364,3 +364,191 @@ def audit_workflow(name: str, description: str = "", steps: list[dict] | None = 
     report.findings = all_findings
     report.passed = report.overall >= 5.0
     return report
+
+
+# ── Repository compatibility audit ─────────────────────────────────────────────
+
+def audit_repository(
+    repo_name: str,
+    repo_description: str = "",
+    tech_stack: list[str] | None = None,
+    features: list[str] | None = None,
+    new_dependencies: list[str] | None = None,
+    integration_points: list[str] | None = None,
+    security_notes: str = "",
+) -> AuditReport:
+    """Audit an external repository for compatibility with Dela.
+
+    Scores across four dimensions:
+      - security: dependency safety, credential handling, network exposure
+      - usability: feature overlap, fit with Dela's patterns
+      - impact: how much it would change Dela (low = better)
+      - efficiency: integration effort, runtime cost, dependency weight
+
+    Returns an AuditReport with scores, findings, and a pass/fail verdict.
+    """
+    name = (repo_name or "")[:_MAX_NAME_LEN]
+    description = (repo_description or "")[:_MAX_DESC_LEN]
+    report = AuditReport(asset_type="repository", asset_name=name)
+    all_findings = []
+
+    tech_stack = tech_stack or []
+    features = features or []
+    new_deps = new_dependencies or []
+    integration_pts = integration_points or []
+
+    # ── Security scoring ──────────────────────────────────────────────────
+    sec_score = 8.0
+
+    for dep in new_deps:
+        dep_lower = dep.lower()
+        if any(kw in dep_lower for kw in ["exec", "subprocess", "docker", "shell"]):
+            all_findings.append(AuditFinding(
+                "security", "high",
+                f"New dependency '{dep}' introduces code execution capability",
+                "Ensure sandboxing before integrating"))
+            sec_score = max(0.0, sec_score - 3.0)
+        elif any(kw in dep_lower for kw in ["transformers", "torch", "onnx", "cuda"]):
+            all_findings.append(AuditFinding(
+                "security", "medium",
+                f"New dependency '{dep}' is large and may introduce supply-chain risk",
+                "Pin versions and review SBOM"))
+            sec_score = max(0.0, sec_score - 1.5)
+        elif any(kw in dep_lower for kw in ["http", "request", "fetch", "socket"]):
+            all_findings.append(AuditFinding(
+                "security", "medium",
+                f"New dependency '{dep}' involves network access",
+                "Ensure proper URL validation and timeout handling"))
+            sec_score = max(0.0, sec_score - 1.0)
+
+    seclower = security_notes.lower()
+    if any(kw in seclower for kw in ["injection", "secret", "credential", "token leak"]):
+        all_findings.append(AuditFinding(
+            "security", "critical",
+            "Analysis flagged potential credential/injection risk",
+            "Requires full security review before integration"))
+        sec_score = max(0.0, sec_score - 5.0)
+    elif any(kw in seclower for kw in ["network", "exposed", "public"]):
+        all_findings.append(AuditFinding(
+            "security", "medium",
+            "Repository involves network-exposed features",
+            "Confirm it works offline and behind firewall"))
+        sec_score = max(0.0, sec_score - 2.0)
+
+    report.scores["security"] = max(0.0, sec_score)
+
+    # ── Usability scoring ─────────────────────────────────────────────────
+    use_score = 7.0
+
+    overlap_keywords = {
+        "memory": "Dela already has a memory system",
+        "voice": "Dela already has a full voice stack",
+        "web search": "Dela already has fetch_url + researcher agent",
+        "ppt": "Dela already has presentation generation",
+        "security scan": "Dela already has security self-audit",
+        "heartbeat": "Dela already has heartbeat checks",
+        "compaction": "Dela already has compaction.py",
+        "tools": "May overlap with Dela's tool system",
+    }
+    feature_text = " ".join(features + [description]).lower()
+    for keyword, msg in overlap_keywords.items():
+        if keyword in feature_text:
+            all_findings.append(AuditFinding(
+                "usability", "info",
+                msg,
+                "Evaluate if the external implementation adds value beyond Dela's built-in"))
+            use_score = max(0.0, use_score - 1.0)
+
+    if len(features) > 0 and any(
+        kw not in feature_text
+        for kw in ["memory", "voice", "speech", "web search", "ppt", "security", "heartbeat"]
+    ):
+        use_score = min(10.0, use_score + 1.0)
+
+    ts_text = " ".join(tech_stack).lower()
+    if "python" in ts_text:
+        use_score = min(10.0, use_score + 1.0)
+    if "rust" in ts_text:
+        all_findings.append(AuditFinding(
+            "usability", "medium",
+            "Rust dependency requires C/C++ build toolchain",
+            "Dela is pure Python — Rust adds compilation complexity"))
+        use_score = max(0.0, use_score - 1.0)
+    if "typescript" in ts_text or "javascript" in ts_text:
+        all_findings.append(AuditFinding(
+            "usability", "low",
+            "JS/TS presence may add Node.js dependency",
+            "Consider if the Python API is sufficient"))
+
+    report.scores["usability"] = max(0.0, min(10.0, use_score))
+
+    # ── Impact scoring ────────────────────────────────────────────────────
+    impact_score = 10.0
+
+    for pt in integration_pts:
+        pt_lower = pt.lower()
+        if any(kw in pt_lower for kw in ["brain", "core", "provider"]):
+            all_findings.append(AuditFinding(
+                "impact", "high",
+                f"Integration touches core module: {pt}",
+                "Core changes risk regression across all entry points"))
+            impact_score = max(0.0, impact_score - 4.0)
+        elif any(kw in pt_lower for kw in ["tool", "agent", "skill", "channel"]):
+            all_findings.append(AuditFinding(
+                "impact", "low",
+                f"Integration at edge seam: {pt}",
+                "Extension seams are designed for this — low risk"))
+            impact_score = min(10.0, impact_score + 0.5)
+        elif "proxy" in pt_lower or "mcp" in pt_lower:
+            all_findings.append(AuditFinding(
+                "impact", "medium",
+                f"Integration via proxy/intermediary: {pt}",
+                "Adds a runtime dependency process"))
+            impact_score = max(0.0, impact_score - 2.0)
+
+    if len(new_deps) > 5:
+        all_findings.append(AuditFinding(
+            "impact", "medium",
+            f"Adds {len(new_deps)} new dependencies",
+            "Each new dependency increases maintenance surface"))
+        impact_score = max(0.0, impact_score - len(new_deps) * 0.5)
+
+    report.scores["impact"] = max(0.0, min(10.0, impact_score))
+
+    # ── Efficiency scoring ────────────────────────────────────────────────
+    eff_score = 7.0
+
+    if len(new_deps) > 3:
+        eff_score = max(0.0, eff_score - (len(new_deps) - 3) * 0.5)
+
+    for dep in new_deps:
+        dep_lower = dep.lower()
+        if any(kw in dep_lower for kw in ["transformers", "torch", "onnx", "cuda"]):
+            all_findings.append(AuditFinding(
+                "efficiency", "low",
+                f"Heavyweight dependency: {dep}",
+                "Consider if runtime cost is acceptable"))
+            eff_score = max(0.0, eff_score - 1.0)
+
+    if len(new_deps) == 0:
+        all_findings.append(AuditFinding(
+            "efficiency", "info",
+            "No new dependencies required",
+            "Can be implemented with existing Dela stack"))
+        eff_score = min(10.0, eff_score + 2.0)
+
+    num_int_points = len(integration_pts)
+    if num_int_points == 1:
+        eff_score = min(10.0, eff_score + 1.0)
+    elif num_int_points > 3:
+        all_findings.append(AuditFinding(
+            "efficiency", "medium",
+            f"Requires {num_int_points} integration points",
+            "Multi-point integration increases testing surface"))
+        eff_score = max(0.0, eff_score - (num_int_points - 3) * 0.5)
+
+    report.scores["efficiency"] = max(0.0, min(10.0, eff_score))
+
+    report.findings = all_findings
+    report.passed = report.overall >= 5.0
+    return report
