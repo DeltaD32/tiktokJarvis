@@ -22,6 +22,7 @@ import { AnalyticsPanel }       from './components/panels/AnalyticsPanel'
 import { WorkflowDesignerPanel } from './components/panels/WorkflowDesignerPanel'
 import { AgentRosterPanel }    from './components/panels/AgentRosterPanel'
 import { RichMessage }         from './components/RichMessage'
+import { SubAgentOverlay }     from './components/SubAgentOverlay'
 import { useDelaWS }            from './hooks/useDelaWS'
 import { useVoiceRecorder }     from './hooks/useVoiceRecorder'
 import { useVoiceTTS }          from './hooks/useVoiceTTS'
@@ -474,7 +475,10 @@ export default function App() {
         </div>
       )}
 
-      {/* Voice HUD — only during actual audio (recording, transcribing, TTS playback), not during text streaming */}
+      {/* Sub-agent activity overlay */}
+      <SubAgentOverlay agentStatus={agentStatus} toolStatus={toolStatus} orbState={orbState} />
+
+      {/* Voice HUD */}
       <VoiceHud speaking={ttsSpeaking} caption={caption} recording={recording} transcribing={transcribing} />
 
       {/* Conversation overlay — minimal, full details in Stream panel */}
