@@ -233,6 +233,26 @@ def api_analytics():
     return audit.analytics()
 
 
+@app.get("/api/voices")
+def api_voices():
+    """Return available TTS voices grouped by provider + personality presets."""
+    from dela.personality import all_personalities, EXTRA_VOICES, PIPER_VOICES
+    return {
+        "ok": True,
+        "personalities": all_personalities(),
+        "providers": {
+            "kokoro": {
+                "label": "Kokoro — High Fidelity (82M params)",
+                "voices": [{"id": k, "label": v} for k, v in EXTRA_VOICES.items()],
+            },
+            "piper": {
+                "label": "Piper — Lightweight (50-60MB)",
+                "voices": [{"id": k, "label": v} for k, v in PIPER_VOICES.items()],
+            },
+        },
+    }
+
+
 @app.post("/api/audit/{asset_type}")
 def api_audit_asset(asset_type: str, body: dict):
     """Audit a tool, agent, or workflow before deployment.

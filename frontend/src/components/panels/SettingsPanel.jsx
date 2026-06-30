@@ -769,10 +769,28 @@ export function SettingsPanel({ onClose, message }) {
               settingKey="piper_voice"
               value={settings.live?.piper_voice || settings.voice.piper_voice}
               options={[
-                { value: 'en_US-amy-medium', label: 'en_US-amy-medium (female)' },
-                { value: 'en_US-lessac-medium', label: 'en_US-lessac-medium (female)' },
-                { value: 'en_US-libritts-high', label: 'en_US-libritts-high (female, HQ)' },
-                { value: 'en_GB-alan-medium', label: 'en_GB-alan-medium (male, British)' },
+                { value: 'en_US-amy-medium', label: 'Amy (female, warm US)' },
+                { value: 'en_US-arctic-medium', label: 'Arctic (female, clear US)' },
+                { value: 'en_US-kathleen-medium', label: 'Kathleen (female, natural US)' },
+                { value: 'en_US-kristin-medium', label: 'Kristin (female, bright US)' },
+                { value: 'en_US-lessac-medium', label: 'Lessac (female, articulate US)' },
+                { value: 'en_US-ljspeech-medium', label: 'LJ Speech (female, studio US)' },
+                { value: 'en_US-sam-medium', label: 'Sam (female, soft US)' },
+                { value: 'en_US-danny-medium', label: 'Danny (male, deep US)' },
+                { value: 'en_US-joe-medium', label: 'Joe (male, warm US)' },
+                { value: 'en_US-john-medium', label: 'John (male, neutral US)' },
+                { value: 'en_US-kusal-medium', label: 'Kusal (male, clear US)' },
+                { value: 'en_US-norman-medium', label: 'Norman (male, gruff US)' },
+                { value: 'en_US-ryan-medium', label: 'Ryan (male, casual US)' },
+                { value: 'en_US-hfc_female-medium', label: 'HFC Female (HQ US)' },
+                { value: 'en_US-hfc_male-medium', label: 'HFC Male (HQ US)' },
+                { value: 'en_US-libritts-high', label: 'LibriTTS (female, studio HQ)' },
+                { value: 'en_GB-alan-medium', label: 'Alan (male, British)' },
+                { value: 'en_GB-alba-medium', label: 'Alba (female, British)' },
+                { value: 'en_GB-cori-medium', label: 'Cori (female, British)' },
+                { value: 'en_GB-jenny_dioco-medium', label: 'Jenny (female, British)' },
+                { value: 'en_GB-northern_english_male-medium', label: 'Northern Male (British)' },
+                { value: 'en_GB-southern_english_female-medium', label: 'Southern Female (British)' },
               ]}
               hint="Applied on next TTS call — no restart."
             />

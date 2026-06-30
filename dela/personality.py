@@ -121,10 +121,35 @@ EXTRA_VOICES = {
 }
 
 PIPER_VOICES = {
-    "en_US-amy-medium":     "Amy (female, US)",
-    "en_US-lessac-medium":  "Lessac (female, US)",
-    "en_US-libritts-high":  "LibriTTS (female, US, HQ)",
-    "en_GB-alan-medium":    "Alan (male, UK)",
+    # US English — female
+    "en_US-amy-medium":      "Amy (female, warm US)",
+    "en_US-arctic-medium":   "Arctic (female, clear US)",
+    "en_US-kathleen-medium": "Kathleen (female, natural US)",
+    "en_US-kristin-medium":  "Kristin (female, bright US)",
+    "en_US-lessac-medium":   "Lessac (female, articulate US)",
+    "en_US-ljspeech-medium": "LJ Speech (female, studio US)",
+    "en_US-sam-medium":      "Sam (female, soft US)",
+    # US English — male
+    "en_US-danny-medium":    "Danny (male, deep US)",
+    "en_US-joe-medium":      "Joe (male, warm US)",
+    "en_US-john-medium":     "John (male, neutral US)",
+    "en_US-kusal-medium":    "Kusal (male, clear US)",
+    "en_US-norman-medium":   "Norman (male, gruff US)",
+    "en_US-ryan-medium":     "Ryan (male, casual US)",
+    # US English — high quality
+    "en_US-hfc_female-medium": "HFC Female (HQ US)",
+    "en_US-hfc_male-medium":   "HFC Male (HQ US)",
+    "en_US-libritts-high":     "LibriTTS (female, studio HQ)",
+    # UK English
+    "en_GB-alan-medium":     "Alan (male, British)",
+    "en_GB-alba-medium":     "Alba (female, British)",
+    "en_GB-aru-medium":      "Aru (female, British)",
+    "en_GB-cori-medium":     "Cori (female, British)",
+    "en_GB-jenny_dioco-medium": "Jenny (female, British)",
+    "en_GB-northern_english_male-medium": "Northern Male (British)",
+    "en_GB-semaine-medium":  "Semaine (neutral, British)",
+    "en_GB-southern_english_female-medium": "Southern Female (British)",
+    "en_GB-vctk-medium":     "VCTK (multi-speaker, British)",
 }
 
 
