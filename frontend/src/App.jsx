@@ -48,12 +48,6 @@ Object.assign(ACCENT_RGB, {
   complete: _theme.colors.complete,
 })
 
-const IDLE_STATS = [
-  { label: 'HEARTBEAT', value: '—', pos: { left: '9%', top: '27%' }, key: 'heartbeat' },
-  { label: 'TOOLS', value: '46', pos: { right: '9%', top: '27%' }, key: 'tools' },
-  { label: 'UPLINK', value: '—', pos: { left: '11%', top: '60%' }, key: 'uplink' },
-  { label: 'AGENTS', value: '5', sub: 'ready', pos: { right: '11%', top: '60%' }, key: 'agents' },
-]
 
 export default function App() {
   const {
@@ -78,6 +72,7 @@ export default function App() {
   const [agentInfo, setAgentInfo] = useState({ count: 5, ready: 5 })
   const [toolCount, setToolCount] = useState(46)
   const [voiceEnabled, setVoiceEnabled] = useState(true)
+  const [idleExpanded, setIdleExpanded] = useState(false)
 
   // Voice
   const { recording, transcribing, error: voiceError, toggle: toggleVoice, clearError: clearVoiceError } = useVoiceRecorder()
@@ -337,130 +332,95 @@ export default function App() {
       {/* Skip navigation link for keyboard users */}
       <a href="#idle-input" className="skip-link">Skip to input</a>
 
-      {/* Data panel buttons — grouped by category */}
-      <div style={{ position: 'absolute', top: isIdle ? 14 : 50, right: 24, zIndex: 7, display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-        {/* Monitor group */}
-        <div className="btn-group">
-          <span className="btn-group-label">Monitor</span>
-          <button className="data-btn" onClick={() => openLocalPanel('analytics')} aria-label="Analytics" title="Analytics">📊</button>
-          <button className="data-btn" onClick={() => openLocalPanel('audit')} aria-label="Audit" title="Audit">📋</button>
-          <button className="data-btn" onClick={() => openLocalPanel('notices')} aria-label="Notices" title="Notices">{noticeCount > 0 ? `🔔${noticeCount}` : '🔕'}</button>
-          <button className="data-btn" onClick={() => openLocalPanel('security')} aria-label="Security" title="Security">🛡️</button>
-        </div>
-        {/* Manage group */}
-        <div className="btn-group">
-          <span className="btn-group-label">Manage</span>
-          <button className="data-btn" onClick={() => openLocalPanel('memory')} aria-label="Memory" title="Memory">🧠</button>
-          <button className="data-btn" onClick={() => openLocalPanel('state')} aria-label="State" title="State">🗂️</button>
-          <button className="data-btn" onClick={() => openLocalPanel('projects')} aria-label="Projects" title="Projects">📁</button>
-          <button className="data-btn" onClick={() => openLocalPanel('workflows')} aria-label="Workflows" title="Workflows">⚙️</button>
-        </div>
-        {/* System group */}
-        <div className="btn-group">
-          <span className="btn-group-label">System</span>
-          <button className="data-btn" onClick={() => openLocalPanel('agents')} aria-label="Agents" title="Agents">🤖</button>
-          <button className="data-btn" onClick={() => openLocalPanel('tools')} aria-label="Tools" title="Tools">🔧</button>
-          <button className="data-btn" onClick={() => openLocalPanel('settings')} aria-label="Settings" title="Settings">⚡</button>
-        </div>
+      {/* Data panel buttons — floating icons, no boxes */}
+      <div style={{ position: 'absolute', top: isIdle ? 14 : 50, right: 24, zIndex: 7, display: 'flex', gap: 2, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+        <button className="float-btn" onClick={() => openLocalPanel('analytics')} title="Analytics">📊</button>
+        <button className="float-btn" onClick={() => openLocalPanel('audit')} title="Audit">📋</button>
+        <button className="float-btn" onClick={() => openLocalPanel('notices')} title={noticeCount > 0 ? `${noticeCount} notices` : 'Notices'}>{noticeCount > 0 ? '🔔' : '🔕'}</button>
+        <button className="float-btn" onClick={() => openLocalPanel('security')} title="Security">🛡️</button>
+        <span style={{ width: 8 }} />
+        <button className="float-btn" onClick={() => openLocalPanel('memory')} title="Memory">🧠</button>
+        <button className="float-btn" onClick={() => openLocalPanel('state')} title="State">🗂️</button>
+        <button className="float-btn" onClick={() => openLocalPanel('projects')} title="Projects">📁</button>
+        <button className="float-btn" onClick={() => openLocalPanel('workflows')} title="Workflows">⚙️</button>
+        <span style={{ width: 8 }} />
+        <button className="float-btn" onClick={() => openLocalPanel('agents')} title="Agents">🤖</button>
+        <button className="float-btn" onClick={() => openLocalPanel('tools')} title="Tools">🔧</button>
+        <button className="float-btn" onClick={() => openLocalPanel('settings')} title="Settings">⚡</button>
       </div>
 
       {/* Idle view */}
       {isIdle && (
         <div className="idle-view">
-          {IDLE_STATS.map((s, i) => {
-            let value = s.value, sub = s.sub, statColor = null
-            if (s.key === 'heartbeat') {
-              value = heartbeatActive ? 'ACTIVE' : 'PAUSED'
-              statColor = heartbeatActive ? 'var(--green)' : 'var(--text-dim)'
-            } else if (s.key === 'uplink' && uplink) {
-              if (uplink.status === 'connected') {
-                value = 'LINKED'
-                sub = uplink.model || ''
-                statColor = 'var(--green)'
-              } else if (uplink.status === 'auth_error') {
-                value = 'AUTH FAIL'
-                sub = uplink.error?.slice(0, 20) || 'check API key'
-                statColor = 'var(--red)'
-              } else if (uplink.status === 'unreachable') {
-                value = 'OFFLINE'
-                sub = 'no connection'
-                statColor = 'var(--amber)'
-              } else {
-                value = 'ERROR'
-                sub = uplink.error?.slice(0, 20) || 'unknown'
-                statColor = 'var(--amber)'
-              }
-            } else if (s.key === 'agents') {
-              value = String(agentInfo.count)
-              sub = agentInfo.ready === agentInfo.count ? 'ready' : `${agentInfo.ready} ready`
-              statColor = agentInfo.ready === agentInfo.count ? 'var(--green)' : 'var(--amber)'
-            } else if (s.key === 'tools') {
-              value = String(toolCount)
-            }
-            return (
-              <div key={i} className="idle-corner-stat" style={s.pos}>
-                <div className="label">{s.label}</div>
-                <div className="value" style={statColor ? { color: statColor } : undefined}>
-                  {value}
-                  {sub && <span style={{ color: 'var(--text-dim)', fontSize: 11 }}> {sub}</span>}
-                </div>
-                {s.key === 'uplink' && uplink && uplink.latency_ms != null && (
-                  <div style={{ font: "500 9px 'JetBrains Mono', monospace", color: 'var(--text-dim)', marginTop: 2 }}>
-                    {uplink.latency_ms}ms · {uplink.profile}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-          <div className="idle-center" style={{ maxWidth: 380, margin: '0 auto' }}>
+          <div className="idle-center">
             <div className="idle-chat-panel">
-              <div>
-                <div className="idle-logo">DELA</div>
-                <div className="idle-subtitle">all systems nominal</div>
-              </div>
-              <div className="idle-input-wrap" style={{ padding: '2px 8px' }}>
-                <span className="idle-input-prompt" style={{ fontSize: 14 }}>&gt;</span>
-                <input
-                  id="idle-input"
-                  className="idle-input"
-                  style={{ fontSize: 13, padding: '4px 0' }}
-                  value={input}
-                  onChange={e => setInput(e.target.value)}
-                  onKeyDown={handleKey}
-                  placeholder="Message or /command..."
-                  autoFocus
-                />
-                <button
-                  className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
-                  onClick={handleVoiceToggle}
-                  aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
-                  style={{ fontSize: 14, padding: '2px 5px', minWidth: 28 }}
-                >
-                  {transcribing ? '···' : recording ? '⏹' : '🎤'}
-                </button>
-                <button type="button" className="execute-btn" onClick={handleSend} style={{ fontSize: 12, padding: '3px 8px', minWidth: 32 }}>↵</button>
-              </div>
-              {voiceError && (
-                <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)', marginTop: 4, textAlign: 'center' }}>
-                  {voiceError}
-                </div>
-              )}
-              <div className="idle-extras">
-                <div className="chip-row">
-                  <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
-                  <button className="chip" onClick={() => { sendMessage('Search memory'); setInput('') }}>Search memory</button>
-                  <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
-                  <button
-                    className={`chip ${voiceEnabled ? 'active' : ''}`}
-                    onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (!next) ttsStop() }}
-                  >
-                    {voiceEnabled ? '🔊 ON' : '🔇'}
+              <div className="idle-logo">DELA</div>
+              {!idleExpanded ? (
+                <div className="idle-bar-collapsed">
+                  <button className="idle-icon-btn" onClick={() => setIdleExpanded(true)} title="Chat">
+                    💬
                   </button>
+                  <button
+                    className={`idle-icon-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
+                    onClick={handleVoiceToggle}
+                    title={recording ? 'Stop' : 'Voice'}
+                  >
+                    {transcribing ? '···' : recording ? '⏹' : '🎤'}
+                  </button>
+                  <span
+                    className={`idle-hb ${heartbeatActive ? 'active' : ''}`}
+                    title={heartbeatActive ? 'Heartbeat active' : 'Heartbeat paused'}
+                  />
                 </div>
-                <div style={{ fontSize: 8, color: 'var(--text-faint)', textAlign: 'center', marginTop: 4, fontFamily: "'JetBrains Mono', monospace", opacity: 0.4 }}>
-                  /help /clear /voice /theme /memory /agents /scan
-                </div>
-              </div>
+              ) : (
+                <>
+                  <div className="idle-subtitle">all systems nominal</div>
+                  <div className="idle-input-wrap" style={{ padding: '8px 12px' }}>
+                    <span className="idle-input-prompt" style={{ fontSize: 14 }}>&gt;</span>
+                    <input
+                      id="idle-input"
+                      className="idle-input"
+                      style={{ fontSize: 13, padding: '4px 0' }}
+                      value={input}
+                      onChange={e => setInput(e.target.value)}
+                      onKeyDown={handleKey}
+                      placeholder="Message or /command..."
+                      autoFocus
+                    />
+                    <button
+                      className={`mic-btn ${recording ? 'recording' : ''} ${transcribing ? 'transcribing' : ''}`}
+                      onClick={handleVoiceToggle}
+                      aria-label={recording ? 'Stop recording' : transcribing ? 'Transcribing...' : 'Start voice input'}
+                      style={{ fontSize: 14, padding: '4px 8px', minWidth: 28 }}
+                    >
+                      {transcribing ? '···' : recording ? '⏹' : '🎤'}
+                    </button>
+                    <button type="button" className="exec-btn-sm" onClick={handleSend}>↵</button>
+                    <button className="idle-collapse-btn" onClick={() => setIdleExpanded(false)} title="Collapse">×</button>
+                  </div>
+                  {voiceError && (
+                    <div style={{ font: "500 11px 'JetBrains Mono', monospace", color: 'var(--red)', marginTop: 4, textAlign: 'center' }}>
+                      {voiceError}
+                    </div>
+                  )}
+                  <div className="idle-extras">
+                    <div className="chip-row">
+                      <button className="chip" onClick={() => { sendMessage('What can you do?'); setInput('') }}>What can you do?</button>
+                      <button className="chip" onClick={() => { sendMessage('Search memory'); setInput('') }}>Search memory</button>
+                      <button className="chip" onClick={() => openLocalPanel('analytics')}>Analytics</button>
+                      <button
+                        className={`chip ${voiceEnabled ? 'active' : ''}`}
+                        onClick={() => { const next = !voiceEnabled; setVoiceEnabled(next); if (!next) ttsStop() }}
+                      >
+                        {voiceEnabled ? '🔊 ON' : '🔇'}
+                      </button>
+                    </div>
+                    <div style={{ fontSize: 8, color: 'var(--text-faint)', textAlign: 'center', marginTop: 4, fontFamily: "'JetBrains Mono', monospace", opacity: 0.4 }}>
+                      /help /clear /voice /theme /memory /agents /scan
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
