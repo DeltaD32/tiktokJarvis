@@ -161,7 +161,36 @@ brain + tools + memory.
 
 ---
 
-## Step 7 — Multi-User Auth & Access Control
+## Step 7 — Content Sandbox
+
+**What:** A 6-layer security pipeline for all internet-facing content. Every byte from
+external URLs passes through SSRF protection, content-type validation, HTML sanitization,
+malicious pattern scanning, encrypted quarantine, and integrity verification before
+reaching the model.
+
+**Why:** `fetch_url` previously fetched arbitrary URLs with only a basic scheme check.
+No protection against SSRF attacks, malicious scripts in HTML, prompt injection payloads,
+or binary content. As Dela gains more internet-facing tools (repo analysis, multi-platform
+research), a centralized security layer prevents accidental compromise.
+
+**How:** `dela/content_sandbox.py` — a seam that wraps `urllib.request`. Existing tools
+import `secure_fetch()` instead of calling `urlopen()` directly. Six layers applied in
+order; any layer can reject content before it reaches the brain.
+
+**Files:** `dela/content_sandbox.py` (new), `dela/tools/research.py` (rewired to sandbox),
+`dela/tools/repo_analysis.py` (rewired to sandbox), `dela/brain.py` (added
+`analyze_external_repo` to `_EXTERNAL_TOOLS`), `docs/security.md` (content sandbox
+section).
+
+**New deps:** None (stdlib-only: `hashlib`, `ipaddress`, `re`, `json`, `urllib`).
+
+**Verify:** SSRF blocks `127.0.0.1`, `169.254.169.254`; HTML sanitizer strips
+`<script>`, `<iframe>`, event handlers; pattern scanner detects "ignore previous
+instructions" and `eval()` calls; quarantined content is encrypted at rest.
+
+---
+
+## Step 8 — Multi-User Auth & Access Control
 
 **What:** Transform Dela from a single-user laptop assistant to a multi-user
 server with role-based access control, per-user state isolation, JWT
@@ -236,7 +265,8 @@ entries.
 4. **MCP support** ✅ (done — MCP server bridging)
 5. **Sandboxed execution** ✅ (done — Docker/subprocess sandbox)
 6. **IM channels** ✅ (done — Telegram, Teams, Graph API)
-7. **Multi-user auth** (see Step 7 above)
+7. **Content sandbox** ✅ (done — 6-layer internet content security)
+8. **Multi-user auth** (see Step 8 below)
 
 Each step ends with something runnable and a verification test. Don't start
 a step until the previous one works on its own.
