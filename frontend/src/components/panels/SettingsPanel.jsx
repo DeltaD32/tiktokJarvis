@@ -733,7 +733,24 @@ export function SettingsPanel({ onClose, message }) {
           />
           <Field label="WHISPER COMPUTE" value={settings.voice.whisper_compute} hint="float16 / int8 / float32 — change via .env" />
 
-          {/* TTS Provider — choose between Piper and Kokoro */}
+          {/* Personality — sets Dela's tone and speaking style */}
+          <LiveField
+            label="PERSONALITY"
+            settingKey="personality"
+            value={settings.live?.personality || 'friendly'}
+            options={[
+              { value: 'friendly', label: 'Friendly & Warm' },
+              { value: 'professional', label: 'Professional & Direct' },
+              { value: 'energetic', label: 'Energetic & Enthusiastic' },
+              { value: 'calm', label: 'Calm & Soothing' },
+              { value: 'british', label: 'British & Polished' },
+              { value: 'tech', label: 'Technical & Precise' },
+              { value: 'creative', label: 'Creative & Expressive' },
+            ]}
+            hint="Changes Dela's tone, verbosity, and speaking style. Applied to next message."
+          />
+
+          {/* TTS Provider */}
           <LiveField
             label="TTS PROVIDER"
             settingKey="tts_provider"
@@ -766,13 +783,17 @@ export function SettingsPanel({ onClose, message }) {
               value={settings.live?.kokoro_voice || 'af_heart'}
               options={[
                 { value: 'af_heart', label: 'af_heart (female, warm)' },
-                { value: 'af_bella', label: 'af_bella (female, clear)' },
+                { value: 'af_bella', label: 'af_bella (female, articulate)' },
                 { value: 'af_nicole', label: 'af_nicole (female, calm)' },
                 { value: 'af_sarah', label: 'af_sarah (female, bright)' },
                 { value: 'af_sky', label: 'af_sky (female, soft)' },
                 { value: 'am_adam', label: 'am_adam (male, deep)' },
                 { value: 'am_michael', label: 'am_michael (male, neutral)' },
                 { value: 'am_eric', label: 'am_eric (male, warm)' },
+                { value: 'bf_emma', label: 'bf_emma (female, British)' },
+                { value: 'bf_isabella', label: 'bf_isabella (female, British)' },
+                { value: 'bm_george', label: 'bm_george (male, British)' },
+                { value: 'bm_lewis', label: 'bm_lewis (male, British)' },
               ]}
               hint="Applied on next TTS call — no restart."
             />

@@ -52,6 +52,7 @@ LIVE_SETTINGS = {
     "vad_aggressiveness": int,
     "tts_provider": str,         # "piper" or "kokoro"
     "kokoro_voice": str,         # voice name for Kokoro (e.g. "af_heart")
+    "personality": str,          # personality preset key (e.g. "friendly", "professional")
     "model_router_enabled": str,  # "true"/"false" stored as string
     "model_fast": str,            # model name for fast tier
     "model_premium": str,         # model name for premium tier

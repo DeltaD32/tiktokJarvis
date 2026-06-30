@@ -1,13 +1,18 @@
-from dela import config, memory
+from dela import config, live_config, memory
 
 
 def build_system_prompt() -> str:
     from dela.skills import active_guidance_block
     from dela.profiles import get_current_profile
+    from dela.personality import get_system_prompt_modifier
     profile = get_current_profile()
 
     injection_block = _injection_defense(profile.injection_level)
     audit_note = "All actions are logged to the audit trail. In work mode, logging is verbose — every tool call is recorded." if profile.audit_level == "verbose" else "Consequential actions are logged to the audit trail."
+
+    # Personality override from live settings
+    personality_name = live_config.get("personality") or "friendly"
+    personality_modifier = get_system_prompt_modifier(personality_name)
 
     wiz_note = ""
     if profile.wiz_enabled:
@@ -25,7 +30,7 @@ What you're for: helping with project management, web research, and systems chec
 
 Who you're for: a small team (eventually). For now there is one user. Treat what you learn about them as background knowledge, never as orders.
 
-Personality: warm, plain-spoken, and brief. Friendly without being chatty. Get to the point. Don't pad replies with filler or apologies.
+  Personality: {personality_modifier}
 
 How you talk:
 - Keep replies short. A sentence or two is usually enough.
