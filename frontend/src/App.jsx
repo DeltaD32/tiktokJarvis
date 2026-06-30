@@ -258,8 +258,9 @@ export default function App() {
     }
   }, [orbState, ttsSpeaking, ttsStop])
 
-  const isIdle = orbState === 'idle'
-  const isSpeaking = orbState === 'speaking'
+  // Don't transition to idle while TTS is still speaking
+  const isIdle = orbState === 'idle' && !ttsSpeaking
+  const isSpeaking = orbState === 'speaking' || (ttsSpeaking && orbState !== 'thinking')
   const caption = currentStream || (toolStatus || '')
 
   return (

@@ -8,7 +8,7 @@ let _analyser = null
 let _analyserData = null
 let _ampRaf = null
 let _currentAmp = 0
-let _userInteracted = false  // true after first click/key — unlocks autoplay
+let _userInteracted = false
 
 function _ensureAudio() {
   if (!_audioCtx) {
@@ -19,7 +19,6 @@ function _ensureAudio() {
     _analyserData = new Uint8Array(_analyser.frequencyBinCount)
     _analyser.connect(_audioCtx.destination)
   }
-  // Always ensure context is running
   if (_audioCtx.state === 'suspended') {
     _audioCtx.resume()
   }
@@ -51,17 +50,46 @@ export function getVoiceAmplitude() {
   return _currentAmp
 }
 
-/**
- * useVoiceTTS — sends text to /api/voice/tts and plays the returned audio.
- * Exposes real-time voice amplitude for visual pulse sync.
- */
 export function useVoiceTTS() {
   const [speaking, setSpeaking] = useState(false)
-  const audioRef = useRef(null)
   const queueRef = useRef([])
   const playingRef = useRef(false)
   const cancelledRef = useRef(false)
-  const sourceNodeRef = useRef(null)  // current AudioBufferSourceNode
+  const sourceNodeRef = useRef(null)
+  const prefetchBufferRef = useRef(null)  // pre-fetched audio for next sentence
+
+  // Fetch TTS audio and return decoded AudioBuffer (or null)
+  const fetchAudio = useCallback(async (text) => {
+    try {
+      const resp = await fetch('/api/voice/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
+      })
+      if (!resp.ok) return null
+      const arrayBuffer = await resp.arrayBuffer()
+      if (cancelledRef.current) return null
+      _ensureAudio()
+      if (_audioCtx.state === 'suspended') _audioCtx.resume()
+      return await _audioCtx.decodeAudioData(arrayBuffer)
+    } catch {
+      return null
+    }
+  }, [])
+
+  // Prefetch the next sentence while current plays
+  const prefetchNext = useCallback(() => {
+    if (queueRef.current.length === 0 || cancelledRef.current) return
+    const nextText = queueRef.current[0]
+    if (!nextText || !nextText.trim()) return
+    // Don't overwrite an existing prefetch
+    if (prefetchBufferRef.current) return
+    fetchAudio(nextText).then(buffer => {
+      if (buffer && !cancelledRef.current) {
+        prefetchBufferRef.current = { text: nextText, buffer }
+      }
+    })
+  }, [fetchAudio])
 
   const playNext = useCallback(() => {
     if (queueRef.current.length === 0) {
@@ -80,45 +108,43 @@ export function useVoiceTTS() {
     playingRef.current = true
     setSpeaking(true)
 
-    fetch('/api/voice/tts', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+    // Use prefetched buffer if available
+    if (prefetchBufferRef.current && prefetchBufferRef.current.text === text) {
+      const audioBuffer = prefetchBufferRef.current.buffer
+      prefetchBufferRef.current = null
+      if (cancelledRef.current) { playNext(); return }
+      playBuffer(audioBuffer)
+      // Prefetch next
+      prefetchNext()
+      return
+    }
+
+    // Fetch and play
+    fetchAudio(text).then(audioBuffer => {
+      prefetchBufferRef.current = null  // clear any stale prefetch
+      if (!audioBuffer || cancelledRef.current) { playNext(); return }
+      playBuffer(audioBuffer)
+      // Prefetch next
+      prefetchNext()
     })
-      .then(r => {
-        if (!r.ok) throw new Error('TTS failed')
-        return r.arrayBuffer()
-      })
-      .then(arrayBuffer => {
-        if (cancelledRef.current) { playNext(); return }
-        _ensureAudio()
-        if (_audioCtx.state === 'suspended') {
-          _audioCtx.resume()
-        }
-        // Decode WAV into AudioBuffer for proper Web Audio playback
-        return _audioCtx.decodeAudioData(arrayBuffer).then(audioBuffer => {
-          if (cancelledRef.current) { playNext(); return }
-          const source = _audioCtx.createBufferSource()
-          source.buffer = audioBuffer
-          source.connect(_analyser)
-          sourceNodeRef.current = source
-          _startAmpLoop()
-          source.onended = () => {
-            try { sourceNodeRef.current?.disconnect() } catch (_) {}
-            sourceNodeRef.current = null
-            _stopAmpLoop()
-            playNext()
-          }
-          source.start()
-        })
-      })
-      .catch(() => {
-        playNext()
-      })
-  }, [])
+  }, [fetchAudio, prefetchNext])
+
+  const playBuffer = useCallback((audioBuffer) => {
+    const source = _audioCtx.createBufferSource()
+    source.buffer = audioBuffer
+    source.connect(_analyser)
+    sourceNodeRef.current = source
+    _startAmpLoop()
+    source.onended = () => {
+      try { sourceNodeRef.current?.disconnect() } catch (_) {}
+      sourceNodeRef.current = null
+      _stopAmpLoop()
+      playNext()
+    }
+    source.start()
+  }, [playNext])
 
   const speak = useCallback((text) => {
-    // Strip emojis and other symbols that TTS can't pronounce
     const clean = text.replace(/[\p{Emoji_Presentation}\p{Emoji}\u200D\uFE0F]/gu, '').replace(/\s{2,}/g, ' ')
     const sentences = clean.match(/[^.!?]+(?:[.!?](?!\s+[A-Z]))*[.!?]?/g) || [clean]
     const filtered = sentences.filter(s => s.trim())
@@ -129,7 +155,6 @@ export function useVoiceTTS() {
     queueRef.current.push(...filtered)
     if (!playingRef.current) {
       cancelledRef.current = false
-      // Resume AudioContext now — user interaction (send message) has occurred
       if (_audioCtx && _audioCtx.state === 'suspended') {
         _audioCtx.resume()
       }
@@ -140,6 +165,7 @@ export function useVoiceTTS() {
   const stop = useCallback(() => {
     cancelledRef.current = true
     queueRef.current.length = 0
+    prefetchBufferRef.current = null
     _stopAmpLoop()
     try {
       sourceNodeRef.current?.stop()
@@ -154,6 +180,7 @@ export function useVoiceTTS() {
     return () => {
       cancelledRef.current = true
       queueRef.current.length = 0
+      prefetchBufferRef.current = null
       _stopAmpLoop()
       try {
         sourceNodeRef.current?.stop()
@@ -162,7 +189,6 @@ export function useVoiceTTS() {
     }
   }, [])
 
-  // Create AudioContext on first user interaction (required by browser autoplay policy)
   useEffect(() => {
     const onInteract = () => {
       _userInteracted = true
