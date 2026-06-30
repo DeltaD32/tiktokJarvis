@@ -50,6 +50,35 @@ export function getVoiceAmplitude() {
   return _currentAmp
 }
 
+// Cross-tab coordination: only one tab plays audio at a time
+let _speakerChannel = null
+let _isSpeaker = false
+
+function _ensureChannel() {
+  if (_speakerChannel) return
+  try {
+    _speakerChannel = new BroadcastChannel('dela-audio')
+    _speakerChannel.onmessage = (ev) => {
+      if (ev.data === 'speaking') _isSpeaker = false
+      if (ev.data === 'stopped') _isSpeaker = true
+    }
+  } catch (_) {
+    _speakerChannel = null
+  }
+}
+
+function _claimSpeaker() {
+  if (!_speakerChannel) return true
+  _isSpeaker = true
+  try { _speakerChannel.postMessage('speaking') } catch (_) {}
+  return true
+}
+
+function _releaseSpeaker() {
+  _isSpeaker = false
+  try { _speakerChannel?.postMessage('stopped') } catch (_) {}
+}
+
 export function useVoiceTTS() {
   const [speaking, setSpeaking] = useState(false)
   const queueRef = useRef([])
@@ -96,6 +125,7 @@ export function useVoiceTTS() {
       playingRef.current = false
       setSpeaking(false)
       _stopAmpLoop()
+      _releaseSpeaker()
       return
     }
 
@@ -145,6 +175,9 @@ export function useVoiceTTS() {
   }, [playNext])
 
   const speak = useCallback((text) => {
+    // Only play audio if this tab is the speaker (prevents duplicate audio from multiple tabs)
+    if (_speakerChannel && !_isSpeaker) return
+
     const clean = text.replace(/[\p{Emoji_Presentation}\p{Emoji}\u200D\uFE0F]/gu, '').replace(/\s{2,}/g, ' ')
     const sentences = clean.match(/[^.!?]+(?:[.!?](?!\s+[A-Z]))*[.!?]?/g) || [clean]
     const filtered = sentences.filter(s => s.trim())
@@ -155,6 +188,7 @@ export function useVoiceTTS() {
     queueRef.current.push(...filtered)
     if (!playingRef.current) {
       cancelledRef.current = false
+      _claimSpeaker()
       if (_audioCtx && _audioCtx.state === 'suspended') {
         _audioCtx.resume()
       }
@@ -174,6 +208,7 @@ export function useVoiceTTS() {
     sourceNodeRef.current = null
     playingRef.current = false
     setSpeaking(false)
+    _releaseSpeaker()
   }, [])
 
   useEffect(() => {
@@ -193,6 +228,7 @@ export function useVoiceTTS() {
     const onInteract = () => {
       _userInteracted = true
       _ensureAudio()
+      _ensureChannel()
       document.removeEventListener('click', onInteract)
       document.removeEventListener('keydown', onInteract)
     }
