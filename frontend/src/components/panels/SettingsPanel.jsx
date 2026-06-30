@@ -732,44 +732,52 @@ export function SettingsPanel({ onClose, message }) {
             hint="Reloaded on next STT call — no restart."
           />
           <Field label="WHISPER COMPUTE" value={settings.voice.whisper_compute} hint="float16 / int8 / float32 — change via .env" />
-          <LiveField
-            label="PIPER VOICE"
-            settingKey="piper_voice"
-            value={settings.live?.piper_voice || settings.voice.piper_voice}
-            options={[
-              { value: 'en_US-amy-medium', label: 'en_US-amy-medium (female)' },
-              { value: 'en_US-lessac-medium', label: 'en_US-lessac-medium (female)' },
-              { value: 'en_US-libritts-high', label: 'en_US-libritts-high (high quality)' },
-              { value: 'en_GB-alan-medium', label: 'en_GB-alan-medium (male, British)' },
-            ]}
-            hint="Reloaded on next TTS call — no restart."
-          />
+
+          {/* TTS Provider — choose between Piper and Kokoro */}
           <LiveField
             label="TTS PROVIDER"
             settingKey="tts_provider"
             value={settings.live?.tts_provider || 'kokoro'}
             options={[
-              { value: 'piper', label: 'Piper — lightweight, fast' },
-              { value: 'kokoro', label: 'Kokoro — high fidelity (82M params, ~330MB)' },
+              { value: 'piper', label: 'Piper — lightweight, fast (22kHz)' },
+              { value: 'kokoro', label: 'Kokoro — high fidelity, 8 voices (24kHz)' },
             ]}
-            hint="Kokoro requires pip install kokoro + espeak-ng. Falls back to Piper if unavailable."
+            hint="Kokoro requires pip install kokoro. Falls back to Piper if unavailable."
           />
-          <LiveField
-            label="KOKORO VOICE"
-            settingKey="kokoro_voice"
-            value={settings.live?.kokoro_voice || 'af_heart'}
-            options={[
-              { value: 'af_heart', label: 'af_heart (female, warm)' },
-              { value: 'af_bella', label: 'af_bella (female, clear)' },
-              { value: 'af_nicole', label: 'af_nicole (female, calm)' },
-              { value: 'af_sarah', label: 'af_sarah (female, bright)' },
-              { value: 'af_sky', label: 'af_sky (female, soft)' },
-              { value: 'am_adam', label: 'am_adam (male, deep)' },
-              { value: 'am_michael', label: 'am_michael (male, neutral)' },
-              { value: 'am_eric', label: 'am_eric (male, warm)' },
-            ]}
-            hint="Only used when TTS provider is Kokoro. Applied to next TTS call."
-          />
+
+          {/* Show voice options based on selected provider */}
+          {(settings.live?.tts_provider || 'kokoro') === 'piper' ? (
+            <LiveField
+              label="PIPER VOICE"
+              settingKey="piper_voice"
+              value={settings.live?.piper_voice || settings.voice.piper_voice}
+              options={[
+                { value: 'en_US-amy-medium', label: 'en_US-amy-medium (female)' },
+                { value: 'en_US-lessac-medium', label: 'en_US-lessac-medium (female)' },
+                { value: 'en_US-libritts-high', label: 'en_US-libritts-high (female, HQ)' },
+                { value: 'en_GB-alan-medium', label: 'en_GB-alan-medium (male, British)' },
+              ]}
+              hint="Applied on next TTS call — no restart."
+            />
+          ) : (
+            <LiveField
+              label="KOKORO VOICE"
+              settingKey="kokoro_voice"
+              value={settings.live?.kokoro_voice || 'af_heart'}
+              options={[
+                { value: 'af_heart', label: 'af_heart (female, warm)' },
+                { value: 'af_bella', label: 'af_bella (female, clear)' },
+                { value: 'af_nicole', label: 'af_nicole (female, calm)' },
+                { value: 'af_sarah', label: 'af_sarah (female, bright)' },
+                { value: 'af_sky', label: 'af_sky (female, soft)' },
+                { value: 'am_adam', label: 'am_adam (male, deep)' },
+                { value: 'am_michael', label: 'am_michael (male, neutral)' },
+                { value: 'am_eric', label: 'am_eric (male, warm)' },
+              ]}
+              hint="Applied on next TTS call — no restart."
+            />
+          )}
+
           <LiveField
             label="VAD AGGRESSIVENESS"
             settingKey="vad_aggressiveness"

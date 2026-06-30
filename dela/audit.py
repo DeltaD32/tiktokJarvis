@@ -112,10 +112,12 @@ def analytics() -> dict:
 
     for line in lines:
         if line.startswith("["):
-            # Parse timestamp
-            ts_end = line.index("]")
-            ts = line[1:ts_end]
-            rest = line[ts_end + 2:]
+            try:
+                ts_end = line.index("]")
+                ts = line[1:ts_end]
+                rest = line[ts_end + 2:]
+            except ValueError:
+                continue  # malformed line — skip
 
             if rest.startswith("TOOL "):
                 result["tool_calls"] += 1
