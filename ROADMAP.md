@@ -230,7 +230,7 @@ entries.
 
 ## Implementation Order
 
-1. **Tracing** (smallest, gives visibility for everything after)
+1. **Tracing** ✅ (done — LangSmith + Langfuse callbacks)
 2. **Sub-agents** ✅ (done — 5 specialist agents)
 3. **Skills** ✅ (done — 3 skills, progressive loading)
 4. **MCP support** ✅ (done — MCP server bridging)
