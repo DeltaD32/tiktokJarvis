@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { HoloPanel } from '../HoloPanel'
 
 const CATS = ['general', 'preference', 'identity', 'decision', 'project']
 
@@ -10,7 +11,7 @@ const CAT_COLORS = {
   general:    'var(--text-dim)',
 }
 
-export function MemoryPanel() {
+export function MemoryPanel({ onClose, message }) {
   const [facts, setFacts] = useState([])
   const [loading, setLoading] = useState(true)
   const [editId, setEditId] = useState(null)
@@ -95,8 +96,33 @@ export function MemoryPanel() {
     }
   }
 
+  const clearAll = () => {
+    if (!window.confirm(`Delete all ${facts.length} facts? This cannot be undone.`)) return
+    Promise.all(facts.map(f => fetch(`/api/memory/${f.id}`, { method: 'DELETE' })))
+      .then(() => fetchFacts())
+  }
+
   return (
-    <div className="panel-body">
+    <HoloPanel title={`Memory (${facts.length})`} message={message} onClose={onClose}>
+      {/* Quick stats bar */}
+      {facts.length > 0 && !filter && (
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+          {CATS.map(c => {
+            const count = facts.filter(f => f.category === c).length
+            if (!count) return null
+            return (
+              <button key={c} className="chip" onClick={() => setCatFilter(c)} style={{ fontSize: 9 }}>
+                {c}: {count}
+              </button>
+            )
+          })}
+          <div style={{ flex: 1 }} />
+          <button className="icon-btn" onClick={clearAll} style={{ fontSize: 9, color: 'var(--red)', opacity: 0.6 }}>
+            clear all
+          </button>
+        </div>
+      )}
+
       {error && (
         <div style={{ padding: '6px 10px', marginBottom: 10, background: 'rgba(255,90,69,0.1)', border: '1px solid rgba(255,90,69,0.3)', borderRadius: 6, fontSize: 11, color: 'var(--red)' }}>
           {error}
@@ -192,6 +218,6 @@ export function MemoryPanel() {
           <button className="chip active" onClick={addFact} style={{ fontSize: 9 }}>add</button>
         </div>
       </div>
-    </div>
+    </HoloPanel>
   )
 }

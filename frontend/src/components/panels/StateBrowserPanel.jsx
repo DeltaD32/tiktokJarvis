@@ -92,8 +92,13 @@ export function StateBrowserPanel({ onClose, message }) {
       {/* State type list */}
       {!selectedType && !searchResults && (
         <>
-          <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', marginBottom: 8, fontFamily: "'JetBrains Mono', monospace" }}>
-            STATE TYPES
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div style={{ fontSize: 10, letterSpacing: '0.15em', color: 'var(--text-dim)', fontFamily: "'JetBrains Mono', monospace" }}>
+              STATE TYPES
+            </div>
+            <button className="icon-btn" onClick={() => {
+              fetch('/api/state').then(r => r.json()).then(data => setStateTypes(data || [])).catch(() => {})
+            }} style={{ fontSize: 9, opacity: 0.6 }}>refresh</button>
           </div>
           {stateTypes.map(t => (
             <div key={t.type} className="panel-item" onClick={() => loadType(t.type)} style={{ cursor: 'pointer' }}>

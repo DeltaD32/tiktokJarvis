@@ -19,6 +19,7 @@ export function WorkflowDesignerPanel({ onClose, message }) {
   const [running, setRunning]     = useState(false)
   const [runResult, setRunResult] = useState(null)
   const [error, setError]         = useState(null)
+  const [wfFilter, setWfFilter]   = useState('')
 
   const fetchWorkflows = useCallback(() => {
     fetch('/api/workflows')
@@ -142,13 +143,21 @@ export function WorkflowDesignerPanel({ onClose, message }) {
             </button>
           </div>
 
+          <input
+            className="chat-input"
+            style={{ width: '100%', fontSize: 11, marginBottom: 8 }}
+            placeholder="Filter workflows..."
+            value={wfFilter}
+            onChange={e => setWfFilter(e.target.value)}
+          />
+
           {workflows.length === 0 && (
             <div className="panel-empty" style={{ padding: 20 }}>
               No workflows yet. Click + NEW to design one, or ask Dela to "design a workflow" in chat.
             </div>
           )}
 
-          {workflows.map(wf => (
+          {workflows.filter(w => !wfFilter || w.name.toLowerCase().includes(wfFilter.toLowerCase())).map(wf => (
             <div key={wf.name} className="panel-item" style={{ cursor: 'pointer' }} onClick={() => openWorkflow(wf.name)}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
                 <span className="panel-item-title" style={{ fontSize: 13 }}>{wf.name}</span>
