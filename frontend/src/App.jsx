@@ -286,6 +286,12 @@ export default function App() {
           input={input}
           setInput={setInput}
           onSend={handleSend}
+          voiceEnabled={voiceEnabled}
+          onToggleVoice={() => {
+            const next = !voiceEnabled
+            setVoiceEnabled(next)
+            if (!next) ttsStop()
+          }}
         />
       )}
 

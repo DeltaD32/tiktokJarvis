@@ -9,7 +9,7 @@ const STATE_LABELS = {
   complete:  ['COMPLETE', 'objective met'],
 }
 
-export function TopStrip({ state, cost, noticeCount, connected, input, setInput, onSend }) {
+export function TopStrip({ state, cost, noticeCount, connected, input, setInput, onSend, voiceEnabled, onToggleVoice }) {
   const [ringLabel, ringSub] = STATE_LABELS[state] || STATE_LABELS.idle
 
   const handleKey = (e) => {
@@ -49,6 +49,19 @@ export function TopStrip({ state, cost, noticeCount, connected, input, setInput,
             RECONNECTING
           </span>
         )}
+        <button
+          onClick={onToggleVoice}
+          title={voiceEnabled ? 'Disable voice' : 'Enable voice'}
+          style={{
+            background: 'none', border: `1px solid ${voiceEnabled ? 'var(--green)' : 'var(--text-dim)'}`,
+            color: voiceEnabled ? 'var(--green)' : 'var(--text-dim)', borderRadius: 4,
+            padding: '2px 6px', fontSize: 9, cursor: 'pointer',
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em',
+            marginRight: 8,
+          }}
+        >
+          {voiceEnabled ? '🔊 ON' : '🔇 OFF'}
+        </button>
         {noticeCount > 0 && (
           <div className="stat-block">
             <div className="stat-value accent">{noticeCount}</div>
