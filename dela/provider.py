@@ -75,14 +75,15 @@ def _client() -> OpenAI:
 
 
 def _thinking_kwargs() -> dict:
-    """Build thinking-level kwargs if configured. Reads from live config."""
+    """Build kwargs from live config. Only includes widely-supported params.
+    
+    NOTE: reasoning_effort is intentionally NOT sent — it's only supported by
+    OpenAI's o-series reasoning models and causes rejection errors from most
+    providers (opencode, Ollama, Anthropic proxies, etc.). Thinking level
+    guidance goes through the system prompt instead.
+    """
     from dela import live_config
     kwargs = {}
-    level = live_config.get("thinking_level", "").strip().lower() if live_config.get("thinking_level") else ""
-    if not level:
-        level = getattr(config, "THINKING_LEVEL", "").strip().lower()
-    if level in ("low", "medium", "high"):
-        kwargs["reasoning_effort"] = level
     # max_tokens: only set if explicitly configured by user (some providers reject it)
     max_tok = live_config.get("max_tokens")
     if max_tok and str(max_tok) != "0":
