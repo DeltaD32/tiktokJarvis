@@ -15,6 +15,7 @@ import { ToolBrowserPanel }    from './components/panels/ToolBrowserPanel'
 import { AuditPanel }          from './components/panels/AuditPanel'
 import { NoticesPanel }         from './components/panels/NoticesPanel'
 import { TasksPanel }           from './components/panels/TasksPanel'
+import { ProjectsPanel }        from './components/panels/ProjectsPanel'
 import { SecurityPanel }        from './components/panels/SecurityPanel'
 import { SettingsPanel }        from './components/panels/SettingsPanel'
 import { AnalyticsPanel }       from './components/panels/AnalyticsPanel'
@@ -303,7 +304,7 @@ export default function App() {
           ['memory', 'MEMORY'],
           ['state', 'STATE'],
           ['audit', 'AUDIT'],
-          ['tasks', 'TASKS'],
+          ['projects', 'PROJECTS'],
         ].map(([panel, label]) => (
           <button key={panel} className="data-btn" onClick={() => openLocalPanel(panel)} aria-label={`Open ${label} panel`}>
             {label}
@@ -554,8 +555,8 @@ export default function App() {
         {panel === 'agents' && (
           <AgentRosterPanel key="agents" onClose={handleClose} message={panelMessage} />
         )}
-        {panel === 'tasks' && (
-          <TasksPanel key="tasks" onClose={handleClose} message={panelMessage} />
+        {panel === 'projects' && (
+          <ProjectsPanel key="projects" onClose={handleClose} message={panelMessage} />
         )}
         {panel === 'security' && (
           <SecurityPanel key="security" onClose={handleClose} message={panelMessage} />
