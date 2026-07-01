@@ -9,7 +9,7 @@ const STATE_LABELS = {
   complete:  ['COMPLETE', 'objective met'],
 }
 
-export function TopStrip({ state, cost, noticeCount, connected, input, setInput, onSend, voiceEnabled, onToggleVoice }) {
+export function TopStrip({ state, cost, noticeCount, connected, input, setInput, onSend, voiceEnabled, onToggleVoice, user, onLogout }) {
   const [ringLabel, ringSub] = STATE_LABELS[state] || STATE_LABELS.idle
 
   const handleKey = (e) => {
@@ -44,6 +44,11 @@ export function TopStrip({ state, cost, noticeCount, connected, input, setInput,
       )}
 
       <div className="top-strip-stats">
+        {user && (
+          <span style={{ color: 'var(--text-2)', fontSize: 10, letterSpacing: '0.05em', fontFamily: "'JetBrains Mono', monospace", marginRight: 12 }}>
+            {user.username}{user.role === 'admin' ? ' ◆' : ''}
+          </span>
+        )}
         {!connected && (
           <span style={{ color: 'var(--amber)', fontSize: 10, letterSpacing: '0.1em' }}>
             RECONNECTING
@@ -72,6 +77,21 @@ export function TopStrip({ state, cost, noticeCount, connected, input, setInput,
           <div className="stat-value" style={{ fontSize: 13 }}>{cost}</div>
           <div className="stat-label">COST</div>
         </div>
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            title="Logout"
+            style={{
+              background: 'none', border: '1px solid var(--text-dim)',
+              color: 'var(--text-dim)', borderRadius: 4,
+              padding: '2px 6px', fontSize: 9, cursor: 'pointer',
+              fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.05em',
+              marginLeft: 8,
+            }}
+          >
+            ⏻
+          </button>
+        )}
       </div>
     </div>
   )

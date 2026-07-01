@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 const AGENTS = [
   { name: 'researcher',      label: 'Researcher',      desc: 'Web research, URL fetching, host checking' },
@@ -10,6 +11,7 @@ const AGENTS = [
 ]
 
 export function WorkflowDesignerPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [workflows, setWorkflows] = useState([])
   const [selected, setSelected]   = useState(null)
   const [loading, setLoading]     = useState(true)
@@ -22,7 +24,7 @@ export function WorkflowDesignerPanel({ onClose, message }) {
   const [wfFilter, setWfFilter]   = useState('')
 
   const fetchWorkflows = useCallback(() => {
-    fetch('/api/workflows')
+    fetch('/api/workflows', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setWorkflows(data || []); setLoading(false) })
       .catch(() => setLoading(false))
@@ -31,7 +33,7 @@ export function WorkflowDesignerPanel({ onClose, message }) {
   useEffect(() => { fetchWorkflows() }, [])
 
   const openWorkflow = (name) => {
-    fetch(`/api/workflows/${encodeURIComponent(name)}`)
+    fetch(`/api/workflows/${encodeURIComponent(name)}`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setSelected(data); setView('detail'); setError(null) })
       .catch(() => setError(`Failed to load workflow '${name}'`))
@@ -39,7 +41,7 @@ export function WorkflowDesignerPanel({ onClose, message }) {
 
   const deleteWorkflow = (name) => {
     if (!confirm(`Delete workflow '${name}'?`)) return
-    fetch(`/api/workflows/${encodeURIComponent(name)}`, { method: 'DELETE' })
+    fetch(`/api/workflows/${encodeURIComponent(name)}`, { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(() => { fetchWorkflows(); setSelected(null); setView('list') })
       .catch(() => setError('Failed to delete'))
   }
@@ -47,7 +49,7 @@ export function WorkflowDesignerPanel({ onClose, message }) {
   const runWorkflow = (name) => {
     setRunning(true)
     setRunResult(null)
-    fetch(`/api/workflows/${encodeURIComponent(name)}/run`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
+    fetch(`/api/workflows/${encodeURIComponent(name)}/run`, { method: 'POST', headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' }, body: '{}' })
       .then(r => r.json())
       .then(data => { setRunResult(data); setRunning(false) })
       .catch(() => { setRunning(false); setError('Failed to run workflow') })
@@ -103,7 +105,7 @@ export function WorkflowDesignerPanel({ onClose, message }) {
     setError(null)
     fetch('/api/workflows', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify(editing),
     })
       .then(r => r.json())

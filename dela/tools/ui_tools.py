@@ -22,23 +22,29 @@ def _broadcast(payload: dict) -> None:
     name="show_panel",
     description=(
         "Open a UI panel in the frontend to show the user relevant information. "
-        "Use 'tasks' to show the task list, 'notices' for proactive notices, "
-        "'audit' for the recent activity log, 'memory' for stored facts, "
-        "'tools' for the tool browser, 'analytics' for usage stats, "
-        "'security' for the security audit, 'state' for the state browser, "
-        "or 'workflows' for the workflow designer."
+        "Use 'report' to display a structured report with custom content and a title. "
+        "Use 'tasks', 'notices', 'audit', 'memory', 'tools', 'analytics', "
+        "'security', 'state', or 'workflows' for standard panels."
     ),
     parameters={
         "type": "object",
         "properties": {
             "panel": {
                 "type": "string",
-                "enum": ["tasks", "notices", "audit", "memory", "tools", "analytics", "security", "state", "workflows"],
-                "description": "Which panel to open.",
+                "enum": ["report", "tasks", "notices", "audit", "memory", "tools", "analytics", "security", "state", "workflows"],
+                "description": "Which panel to open. Use 'report' for structured analysis reports with custom content.",
             },
             "message": {
                 "type": "string",
                 "description": "Optional headline message to show at the top of the panel.",
+            },
+            "content": {
+                "type": "string",
+                "description": "For 'report' panel: the full report content (markdown-formatted). Required when panel='report'.",
+            },
+            "title": {
+                "type": "string",
+                "description": "For 'report' panel: the report title.",
             },
         },
         "required": ["panel"],
@@ -48,5 +54,9 @@ def _broadcast(payload: dict) -> None:
 def show_panel(args: dict) -> str:
     panel = args["panel"]
     message = args.get("message", "")
-    _broadcast({"type": "open_panel", "panel": panel, "message": message})
+    payload: dict = {"type": "open_panel", "panel": panel, "message": message}
+    if panel == "report":
+        payload["content"] = args.get("content", "")
+        payload["title"] = args.get("title", "Report")
+    _broadcast(payload)
     return f"Opened {panel} panel{': ' + message if message else ''}."

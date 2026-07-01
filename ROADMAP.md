@@ -190,7 +190,7 @@ instructions" and `eval()` calls; quarantined content is encrypted at rest.
 
 ---
 
-## Step 8 — Multi-User Auth & Access Control
+## Step 8 — Multi-User Auth & Access Control ✅ (done)
 
 **What:** Transform Dela from a single-user laptop assistant to a multi-user
 server with role-based access control, per-user state isolation, JWT
@@ -255,6 +255,20 @@ isolated conversation histories → admin sees user management panel → user do
 not → confirmation dialogs route to correct user → audit log shows per-user
 entries.
 
+**Implementation notes:**
+- `dela/users.py` — SQLite user store, `dela/auth.py` — JWT + bcrypt, `dela/auth_middleware.py` — FastAPI middleware
+- `dela/user_context.py` — thread-local per-user path resolution
+- 12 state modules updated for per-user paths (memory, audit, noticeboard, sessions, live_config, blackboard, projects, agent_memory, routing_cache, status_events, workflows, tasks)
+- System-level files (hb_config, connections, oauth, vuln_kb, schedule) stay system-level
+- Migration: single-user state moves to `dela_state/global/` on first multi-user startup
+- Per-user `_clients`, `_histories`, `_confirm_callbacks` in server; WebSocket auth via `?token=<jwt>`
+- `UserSocketConfirmer` routes confirmations to correct user
+- 11 admin-only endpoints guarded by role check
+- Frontend: `AuthContext.jsx`, `LoginPage.jsx`, `AdminPanel.jsx`; token in WS + all fetch calls
+- Rate limiting: 5 failed attempts / 15 min per IP
+- Password change: `PUT /api/auth/password`
+- New dep: `bcrypt>=4.0.0` (PyJWT already installed)
+
 ---
 
 ## Implementation Order
@@ -266,7 +280,7 @@ entries.
 5. **Sandboxed execution** ✅ (done — Docker/subprocess sandbox)
 6. **IM channels** ✅ (done — Telegram, Teams, Graph API)
 7. **Content sandbox** ✅ (done — 6-layer internet content security)
-8. **Multi-user auth** (see Step 8 below)
+8. **Multi-user auth** ✅ (done — JWT + bcrypt + SQLite users + per-user state + frontend login)
 
 Each step ends with something runnable and a verification test. Don't start
 a step until the previous one works on its own.

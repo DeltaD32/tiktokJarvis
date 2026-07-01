@@ -25,7 +25,14 @@ import json
 from pathlib import Path
 from typing import Any
 
-_STATE_ROOT = Path(__file__).resolve().parent.parent / "dela_state"
+from dela import user_context
+
+
+def _state_root() -> Path:
+    uid = user_context.current_user_id()
+    if uid:
+        return user_context.resolve_state_path(".")
+    return Path(__file__).resolve().parent.parent / "dela_state"
 
 # Map state type → (file or dir, format, description)
 _STATE_MAP = {
@@ -62,7 +69,7 @@ def list_state_types() -> list[dict[str, str]]:
 def _count_items(stype: str) -> int:
     """Count items in a state type."""
     path_str, fmt, _ = _STATE_MAP.get(stype, ("", "", ""))
-    full = _STATE_ROOT / path_str
+    full = _state_root() / path_str
     if not full.exists():
         return 0
     if fmt == "dir_json":
@@ -105,7 +112,7 @@ def read_state(stype: str, item_id: str | None = None, limit: int = 50) -> dict[
         return {"error": f"Unknown state type: {stype}. Available: {list(_STATE_MAP.keys())}"}
 
     path_str, fmt, _ = _STATE_MAP[stype]
-    full = _STATE_ROOT / path_str
+    full = _state_root() / path_str
 
     if not full.exists():
         return {"type": stype, "items": [], "note": "No state file found yet."}
@@ -197,7 +204,7 @@ def search_state(query: str, limit: int = 20) -> list[dict[str, Any]]:
     results = []
 
     for stype, (path_str, fmt, _) in _STATE_MAP.items():
-        full = _STATE_ROOT / path_str
+        full = _state_root() / path_str
         if not full.exists():
             continue
 

@@ -21,11 +21,15 @@ import time
 from pathlib import Path
 from typing import Any
 
-_PROJ_ROOT = Path(__file__).resolve().parent.parent / "dela_state" / "projects"
+from dela import user_context
+
+
+def _proj_root() -> Path:
+    return user_context.resolve_state_dir("projects")
 
 
 def _proj_path(project_id: str) -> Path:
-    return _PROJ_ROOT / f"{project_id}.json"
+    return _proj_root() / f"{project_id}.json"
 
 
 def _now() -> str:
@@ -38,7 +42,7 @@ def _now_ts() -> float:
 
 def create_project(name: str, description: str = "") -> dict[str, Any]:
     """Create a new project. Returns the project dict."""
-    _PROJ_ROOT.mkdir(parents=True, exist_ok=True)
+    _proj_root().mkdir(parents=True, exist_ok=True)
 
     ts = time.strftime("%Y%m%d-%H%M%S")
     slug = name.lower().replace(" ", "-").replace("/", "-")[:40]
@@ -283,14 +287,14 @@ def get_project_status(project_id: str) -> str:
 
 def find_project_for_task(task_description: str) -> dict[str, Any] | None:
     """Fuzzy-match a task description to an existing project."""
-    if not _PROJ_ROOT.exists():
+    if not _proj_root().exists():
         return None
 
     task_lower = task_description.lower()
     best_match = None
     best_score = 0
 
-    for path in _PROJ_ROOT.glob("*.json"):
+    for path in _proj_root().glob("*.json"):
         try:
             project = json.loads(path.read_text(encoding="utf-8"))
             if project.get("status") != "active":
@@ -317,10 +321,10 @@ def find_project_for_task(task_description: str) -> dict[str, Any] | None:
 
 def list_projects(active_only: bool = True) -> list[dict[str, Any]]:
     """List all projects."""
-    if not _PROJ_ROOT.exists():
+    if not _proj_root().exists():
         return []
     results = []
-    for path in _PROJ_ROOT.glob("*.json"):
+    for path in _proj_root().glob("*.json"):
         try:
             project = json.loads(path.read_text(encoding="utf-8"))
             if active_only and project.get("status") != "active":

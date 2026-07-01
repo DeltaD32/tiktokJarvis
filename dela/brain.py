@@ -28,7 +28,7 @@ from dela.compaction import maybe_compact
 # Tools are registered on import of dela.tools.
 from dela.tools import registry  # noqa: E402
 
-_MAX_TOOL_ROUNDS = 8  # safety: never spin forever if the model keeps calling tools
+_MAX_TOOL_ROUNDS = 5  # safety: never spin forever if the model keeps calling tools
 
 # Tools that return content from the outside world — their results get wrapped
 # with a DATA marker so the model can't be tricked into obeying injected text.
@@ -84,6 +84,9 @@ def _run_turn(history: list[Message], model: str | None = None) -> Iterator[str]
         # If the model wants to call tools, run them and feed results back.
         tool_calls = getattr(msg, "tool_calls", None)
         if tool_calls:
+            # Yield any text before tool calls — ensures acknowledgments reach the user
+            if msg.content:
+                yield msg.content
             # Record the assistant's tool-call message verbatim.
             history.append(_assistant_tool_message(msg, tool_calls))
             for call in tool_calls:
@@ -277,6 +280,13 @@ def _run_one_tool_scoped(
         )
         audit.tool_call(name, args, result)
         return
+
+    # Broadcast tool blip so sub-agent overlay shows activity
+    try:
+        from dela.tools.ui_tools import _broadcast as _ui_broadcast
+        _ui_broadcast({"type": "token", "content": f"[ran {name}]", "tool_blip": True})
+    except Exception:
+        pass
 
     try:
         result = tool.run(args)

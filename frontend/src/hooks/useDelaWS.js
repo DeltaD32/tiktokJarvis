@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 
-const WS_URL = `ws://${window.location.host}/ws`
-
-export function useDelaWS() {
+export function useDelaWS(token) {
+  const tokenRef = useRef(token)
+  tokenRef.current = token
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
   const connIdRef = useRef(0)  // incremented on each connect; used to discard stale onclose
@@ -14,12 +14,15 @@ export function useDelaWS() {
   const [toolStatus, setToolStatus]       = useState(null)
   const [activePanel, setActivePanel]     = useState(null)
   const [panelMessage, setPanelMessage]   = useState('')
+  const [panelContent, setPanelContent]   = useState(null)
+  const [panelTitle, setPanelTitle]       = useState('')
   const [confirmRequest, setConfirmRequest] = useState(null)
   const [notices, setNotices]             = useState([])
   const [noticeCount, setNoticeCount]     = useState(0)
   const [heartbeatActive, setHeartbeatActive] = useState(true)
   const [cost, setCost]                   = useState('—')
   const [agentStatus, setAgentStatus]     = useState({})  // { name: { state, task } }
+  const [featureProgress, setFeatureProgress] = useState(null)
 
   // Buffer to hold the full reply text while it animates
   const streamBuffer = useRef('')
@@ -36,7 +39,10 @@ export function useDelaWS() {
     connIdRef.current += 1
     const connId = connIdRef.current
 
-    const ws = new WebSocket(WS_URL)
+    const wsUrl = tokenRef.current
+      ? `ws://${window.location.host}/ws?token=${encodeURIComponent(tokenRef.current)}`
+      : `ws://${window.location.host}/ws`
+    const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
     ws.onopen = () => setConnected(true)
@@ -79,6 +85,8 @@ export function useDelaWS() {
           } else {
             streamBuffer.current += data.content
             setCurrentStream(streamBuffer.current)
+            // Stream into report panel if open
+            setPanelContent(prev => (prev !== null && prev !== undefined ? prev + data.content : prev))
           }
           break
 
@@ -112,6 +120,13 @@ export function useDelaWS() {
         case 'open_panel':
           setActivePanel(data.panel)
           setPanelMessage(data.message ?? '')
+          if (data.content != null && data.content !== '') {
+            setPanelContent(data.content)
+          } else if (data.panel === 'report') {
+            // Initialize empty content for streaming into report panel
+            setPanelContent('')
+          }
+          setPanelTitle(data.title ?? '')
           break
 
         case 'notice':
@@ -137,6 +152,14 @@ export function useDelaWS() {
             ...prev,
             [data.agent]: { state: data.state, task: data.task || '' },
           }))
+          break
+
+        case 'feature_progress':
+          setFeatureProgress({
+            stage: data.stage,
+            progress: data.progress,
+            message: data.message || '',
+          })
           break
 
         default:
@@ -211,23 +234,31 @@ export function useDelaWS() {
   const closePanel = useCallback(() => {
     setActivePanel(null)
     setPanelMessage('')
+    setPanelContent(null)
+    setPanelTitle('')
+  }, [])
+
+  const _authHeaders = useCallback(() => {
+    const h = {}
+    if (tokenRef.current) h['Authorization'] = `Bearer ${tokenRef.current}`
+    return h
   }, [])
 
   const dismissNotice = useCallback((id) => {
-    fetch(`/api/notices/${id}`, { method: 'DELETE' }).catch(() => {})
+    fetch(`/api/notices/${id}`, { method: 'DELETE', headers: _authHeaders() }).catch(() => {})
     setNotices(prev => prev.filter(n => n.id !== id))
     setNoticeCount(prev => Math.max(0, prev - 1))
-  }, [])
+  }, [_authHeaders])
 
   const killHeartbeat = useCallback(() => {
-    fetch('/api/heartbeat/kill', { method: 'POST' }).catch(() => {})
+    fetch('/api/heartbeat/kill', { method: 'POST', headers: _authHeaders() }).catch(() => {})
     setHeartbeatActive(false)
-  }, [])
+  }, [_authHeaders])
 
   const resumeHeartbeat = useCallback(() => {
-    fetch('/api/heartbeat/resume', { method: 'POST' }).catch(() => {})
+    fetch('/api/heartbeat/resume', { method: 'POST', headers: _authHeaders() }).catch(() => {})
     setHeartbeatActive(true)
-  }, [])
+  }, [_authHeaders])
 
   return {
     connected,
@@ -237,12 +268,15 @@ export function useDelaWS() {
     toolStatus,
     activePanel,
     panelMessage,
+    panelContent,
+    panelTitle,
     confirmRequest,
     notices,
     noticeCount,
     heartbeatActive,
     cost,
     agentStatus,
+    featureProgress,
     sendMessage,
     sendConfirm,
     closePanel,

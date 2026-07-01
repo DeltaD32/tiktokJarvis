@@ -44,18 +44,22 @@ import time
 from pathlib import Path
 from typing import Any
 
-_WORKFLOWS_DIR = Path(__file__).resolve().parent.parent / "dela_state" / "workflows"
+from dela import user_context
+
+
+def _workflows_dir() -> Path:
+    return user_context.resolve_state_dir("workflows")
 
 
 def _wf_path(name: str) -> Path:
     """Slugify a workflow name to a filename."""
     slug = name.lower().replace(" ", "-").replace("/", "-")[:60]
-    return _WORKFLOWS_DIR / f"{slug}.json"
+    return _workflows_dir() / f"{slug}.json"
 
 
 def save_workflow(workflow: dict[str, Any]) -> str:
     """Save a workflow definition. Returns the workflow name."""
-    _WORKFLOWS_DIR.mkdir(parents=True, exist_ok=True)
+    _workflows_dir().mkdir(parents=True, exist_ok=True)
     name = workflow["name"]
     workflow.setdefault("created_at", time.strftime("%Y-%m-%dT%H:%M:%S"))
     workflow.setdefault("created_by", "user")
@@ -71,7 +75,7 @@ def load_workflow(name: str) -> dict[str, Any] | None:
     path = _wf_path(name)
     if not path.exists():
         # Try fuzzy match
-        for p in _WORKFLOWS_DIR.glob("*.json"):
+        for p in _workflows_dir().glob("*.json"):
             try:
                 wf = json.loads(p.read_text(encoding="utf-8"))
                 if wf.get("name", "").lower() == name.lower():
@@ -87,10 +91,10 @@ def load_workflow(name: str) -> dict[str, Any] | None:
 
 def list_workflows() -> list[dict[str, Any]]:
     """List all saved workflows."""
-    if not _WORKFLOWS_DIR.exists():
+    if not _workflows_dir().exists():
         return []
     results = []
-    for path in _WORKFLOWS_DIR.glob("*.json"):
+    for path in _workflows_dir().glob("*.json"):
         try:
             wf = json.loads(path.read_text(encoding="utf-8"))
             results.append({

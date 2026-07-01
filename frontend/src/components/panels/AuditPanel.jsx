@@ -1,13 +1,15 @@
 import { useState, useEffect, useRef } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 export function AuditPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [log, setLog]   = useState('')
   const [cost, setCost] = useState('')
   const endRef = useRef(null)
 
   const refresh = () => {
-    fetch('/api/audit?n=80')
+    fetch('/api/audit?n=80', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(d => { setLog(d.log ?? ''); setCost(d.cost ?? '') })
       .catch(() => {})

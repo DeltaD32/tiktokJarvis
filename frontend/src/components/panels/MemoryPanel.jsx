@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 const CATS = ['general', 'preference', 'identity', 'decision', 'project']
 
@@ -12,6 +13,7 @@ const CAT_COLORS = {
 }
 
 export function MemoryPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [facts, setFacts] = useState([])
   const [loading, setLoading] = useState(true)
   const [editId, setEditId] = useState(null)
@@ -26,7 +28,7 @@ export function MemoryPanel({ onClose, message }) {
     const url = filter
       ? `/api/memory/search?q=${encodeURIComponent(filter)}${catFilter ? '&category=' + catFilter : ''}`
       : '/api/memory'
-    fetch(url)
+    fetch(url, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => {
         setFacts(filter ? (data.facts || []) : (data || []))
@@ -42,7 +44,7 @@ export function MemoryPanel({ onClose, message }) {
     if (!text) return
     fetch(`/api/memory/${id}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
     })
       .then(r => r.json())
@@ -55,7 +57,7 @@ export function MemoryPanel({ onClose, message }) {
 
   const deleteFact = (id) => {
     if (!window.confirm('Delete this fact?')) return
-    fetch(`/api/memory/${id}`, { method: 'DELETE' })
+    fetch(`/api/memory/${id}`, { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => {
         if (data.ok) fetchFacts()
@@ -69,7 +71,7 @@ export function MemoryPanel({ onClose, message }) {
     if (!text) return
     fetch('/api/memory', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ text, category: newCat }),
     })
       .then(r => r.json())
@@ -98,7 +100,7 @@ export function MemoryPanel({ onClose, message }) {
 
   const clearAll = () => {
     if (!window.confirm(`Delete all ${facts.length} facts? This cannot be undone.`)) return
-    Promise.all(facts.map(f => fetch(`/api/memory/${f.id}`, { method: 'DELETE' })))
+    Promise.all(facts.map(f => fetch(`/api/memory/${f.id}`, { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })))
       .then(() => fetchFacts())
   }
 

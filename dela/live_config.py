@@ -32,7 +32,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
-from dela import config
+from dela import config, user_context
 
 _lock = threading.Lock()
 
@@ -67,7 +67,8 @@ RESTART_SETTINGS = {
     "tracing_provider", "tracing_project", "tracing_api_key", "tracing_endpoint",
 }
 
-_PERSIST_PATH = Path(__file__).resolve().parent.parent / "dela_state" / "live_settings.json"
+def _persist_path() -> Path:
+    return user_context.resolve_state_path("live_settings.json")
 
 
 def get(key: str, default: Any = None) -> Any:
@@ -135,10 +136,10 @@ def is_live(key: str) -> bool:
 def _persist() -> None:
     """Save overrides to disk so they survive restarts."""
     try:
-        _PERSIST_PATH.parent.mkdir(parents=True, exist_ok=True)
+        _persist_path().parent.mkdir(parents=True, exist_ok=True)
         with _lock:
             data = dict(_overrides)
-        _PERSIST_PATH.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _persist_path().write_text(json.dumps(data, indent=2), encoding="utf-8")
     except Exception:
         pass
 
@@ -146,8 +147,8 @@ def _persist() -> None:
 def _load() -> None:
     """Load persisted overrides on startup."""
     try:
-        if _PERSIST_PATH.exists():
-            data = json.loads(_PERSIST_PATH.read_text(encoding="utf-8"))
+        if _persist_path().exists():
+            data = json.loads(_persist_path().read_text(encoding="utf-8"))
             with _lock:
                 for k, v in data.items():
                     if k in LIVE_SETTINGS:

@@ -109,14 +109,15 @@ def _check_scheduled_workflows(params: dict[str, Any]) -> dict | None:
     """Run any workflows whose cron schedule is due. Files a notice if any ran."""
     import json
     from pathlib import Path
-    from dela.workflows import _WORKFLOWS_DIR, load_workflow, execute_workflow
+    from dela.workflows import _workflows_dir, load_workflow, execute_workflow
     from dela.schedule import is_due, mark_run
 
-    if not _WORKFLOWS_DIR.exists():
+    wf_dir = _workflows_dir()
+    if not wf_dir.exists():
         return None
 
     ran = []
-    for path in _WORKFLOWS_DIR.glob("*.json"):
+    for path in wf_dir.glob("*.json"):
         try:
             wf = json.loads(path.read_text(encoding="utf-8"))
             schedule = wf.get("schedule", "")

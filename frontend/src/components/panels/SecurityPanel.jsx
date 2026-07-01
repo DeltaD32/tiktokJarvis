@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 export function SecurityPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [report, setReport]   = useState(null)
   const [scanning, setScanning] = useState(false)
   const [loading, setLoading]   = useState(true)
@@ -13,7 +15,7 @@ export function SecurityPanel({ onClose, message }) {
   const [fixResult, setFixResult] = useState(null)
 
   const refresh = () => {
-    fetch('/api/security')
+    fetch('/api/security', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setReport(data); setLoading(false) })
       .catch(() => setLoading(false))
@@ -21,7 +23,7 @@ export function SecurityPanel({ onClose, message }) {
 
   const runScan = () => {
     setScanning(true)
-    fetch('/api/security/scan', { method: 'POST' })
+    fetch('/api/security/scan', { method: 'POST', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setReport(data); setScanning(false) })
       .catch(() => setScanning(false))
@@ -29,7 +31,7 @@ export function SecurityPanel({ onClose, message }) {
 
   const fetchKb = () => {
     setKbLoading(true)
-    fetch('/api/vuln-kb')
+    fetch('/api/vuln-kb', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setKb(data); setKbLoading(false) })
       .catch(() => setKbLoading(false))
@@ -37,7 +39,7 @@ export function SecurityPanel({ onClose, message }) {
 
   const refreshKb = () => {
     setKbRefreshing(true)
-    fetch('/api/vuln-kb/refresh', { method: 'POST' })
+    fetch('/api/vuln-kb/refresh', { method: 'POST', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(() => { fetchKb(); setKbRefreshing(false) })
       .catch(() => setKbRefreshing(false))
@@ -48,7 +50,7 @@ export function SecurityPanel({ onClose, message }) {
     setFixResult(null)
     fetch('/api/security/fix', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         finding_title: finding.title,
         finding_detail: finding.detail,

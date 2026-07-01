@@ -19,7 +19,11 @@ import json
 import time
 from pathlib import Path
 
-_STORE = Path(__file__).resolve().parent.parent / "dela_state" / "notices.json"
+from dela import user_context
+
+
+def _store() -> Path:
+    return user_context.resolve_state_path("notices.json")
 
 INFO = "info"
 ATTENTION = "attention"
@@ -36,17 +40,17 @@ def set_on_file_hook(hook) -> None:
 
 
 def _load() -> list[dict]:
-    if not _STORE.exists():
+    if not _store().exists():
         return []
     try:
-        return json.loads(_STORE.read_text(encoding="utf-8"))
+        return json.loads(_store().read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
 
 
 def _save(notices: list[dict]) -> None:
-    _STORE.parent.mkdir(parents=True, exist_ok=True)
-    _STORE.write_text(json.dumps(notices, indent=2, ensure_ascii=False), encoding="utf-8")
+    _store().parent.mkdir(parents=True, exist_ok=True)
+    _store().write_text(json.dumps(notices, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def file(source: str, message: str, severity: str = INFO) -> dict | None:

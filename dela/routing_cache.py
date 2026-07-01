@@ -23,24 +23,28 @@ import time
 from pathlib import Path
 from typing import Any
 
-_STORE = Path(__file__).resolve().parent.parent / "dela_state" / "routing_cache.json"
+from dela import user_context
+
+
+def _store() -> Path:
+    return user_context.resolve_state_path("routing_cache.json")
 
 SIMILARITY_THRESHOLD = 0.65  # Jaccard overlap to trigger a cache hit
 MAX_ENTRIES = 200             # prune oldest if exceeding
 
 
 def _load() -> list[dict[str, Any]]:
-    if not _STORE.exists():
+    if not _store().exists():
         return []
     try:
-        return json.loads(_STORE.read_text(encoding="utf-8"))
+        return json.loads(_store().read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
         return []
 
 
 def _save(data: list[dict[str, Any]]) -> None:
-    _STORE.parent.mkdir(parents=True, exist_ok=True)
-    _STORE.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+    _store().parent.mkdir(parents=True, exist_ok=True)
+    _store().write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def _tokenize(text: str) -> set[str]:

@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 const TYPE_ICONS = {
   memory: '🧠', notices: '🔔', tasks: '📋', projects: '📁',
@@ -8,6 +9,7 @@ const TYPE_ICONS = {
 }
 
 export function StateBrowserPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [stateTypes, setStateTypes] = useState([])
   const [selectedType, setSelectedType] = useState(null)
   const [items, setItems] = useState(null)
@@ -17,7 +19,7 @@ export function StateBrowserPanel({ onClose, message }) {
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
-    fetch('/api/state')
+    fetch('/api/state', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => setStateTypes(data || []))
       .catch(() => {})
@@ -25,7 +27,7 @@ export function StateBrowserPanel({ onClose, message }) {
 
   const loadType = (type) => {
     setSelectedType(type); setSelectedItem(null); setSearchResults(null); setLoading(true)
-    fetch(`/api/state/${type}`)
+    fetch(`/api/state/${type}`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setItems(data); setLoading(false) })
       .catch(() => setLoading(false))
@@ -33,7 +35,7 @@ export function StateBrowserPanel({ onClose, message }) {
 
   const loadItem = (id) => {
     setLoading(true)
-    fetch(`/api/state/${selectedType}/${id}`)
+    fetch(`/api/state/${selectedType}/${id}`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setSelectedItem(data); setLoading(false) })
       .catch(() => setLoading(false))
@@ -42,14 +44,14 @@ export function StateBrowserPanel({ onClose, message }) {
   const doSearch = () => {
     if (!searchQuery.trim()) return
     setLoading(true); setSelectedItem(null)
-    fetch(`/api/state/search?q=${encodeURIComponent(searchQuery)}`)
+    fetch(`/api/state/search?q=${encodeURIComponent(searchQuery)}`, { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setSearchResults(data || []); setLoading(false) })
       .catch(() => setLoading(false))
   }
 
   const refreshTypes = () => {
-    fetch('/api/state').then(r => r.json()).then(data => setStateTypes(data || [])).catch(() => {})
+    fetch('/api/state', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).then(data => setStateTypes(data || [])).catch(() => {})
   }
 
   return (

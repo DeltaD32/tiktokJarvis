@@ -1,13 +1,15 @@
 import { useState, useEffect } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 export function AgentRosterPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [agents, setAgents] = useState([])
   const [loading, setLoading] = useState(true)
 
   const fetchAgents = () => {
     setLoading(true)
-    fetch('/api/agents')
+    fetch('/api/agents', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setAgents(data || []); setLoading(false) })
       .catch(() => setLoading(false))

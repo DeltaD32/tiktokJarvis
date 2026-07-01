@@ -16,30 +16,34 @@ import tempfile
 import threading
 from pathlib import Path
 
-from dela import config
+from dela import config, user_context
 
-_STORE = Path(__file__).resolve().parent.parent / "dela_state" / "memory.json"
 _lock = threading.Lock()
 MAX_FACT_TEXT = 1000
 DEDUP_SIMILARITY = 0.85  # skip if text is 85%+ similar to existing fact
 
 
+def _store() -> Path:
+    return user_context.resolve_state_path("memory.json")
+
+
 def load() -> list[dict]:
     """Return all stored facts. Each fact: {"id": int, "text": str, "category": str}."""
-    if not _STORE.exists():
+    store = _store()
+    if not store.exists():
         return []
     try:
-        return json.loads(_STORE.read_text(encoding="utf-8"))
+        return json.loads(store.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        # Corrupt file — back it up so data isn't permanently lost
         _backup_corrupt()
         return []
 
 
 def _backup_corrupt() -> None:
     try:
-        bak = _STORE.with_suffix(".json.bak")
-        _STORE.rename(bak)
+        store = _store()
+        bak = store.with_suffix(".json.bak")
+        store.rename(bak)
         print(f"[memory] Corrupt memory file backed up to {bak}")
     except Exception:
         pass
@@ -47,10 +51,11 @@ def _backup_corrupt() -> None:
 
 def _atomic_write(facts: list[dict]) -> None:
     """Write facts via temp file + rename to prevent corruption on crash."""
-    _STORE.parent.mkdir(parents=True, exist_ok=True)
-    tmp = _STORE.with_suffix(".tmp")
+    store = _store()
+    store.parent.mkdir(parents=True, exist_ok=True)
+    tmp = store.with_suffix(".tmp")
     tmp.write_text(json.dumps(facts, indent=2, ensure_ascii=False), encoding="utf-8")
-    os.replace(tmp, _STORE)  # atomic on same filesystem
+    os.replace(tmp, store)  # atomic on same filesystem
 
 
 def _dedup_check(text: str, facts: list[dict]) -> bool:
@@ -61,7 +66,6 @@ def _dedup_check(text: str, facts: list[dict]) -> bool:
     for f in facts:
         if f["text"].strip().lower() == text_lower:
             return True
-        # Quick similarity check for near-duplicates
         if _text_similarity(text_lower, f["text"].strip().lower()) >= DEDUP_SIMILARITY:
             return True
     return False
@@ -121,13 +125,7 @@ def remove(fact_id: int) -> bool:
 
 
 def list_facts(category: str | None = None, query: str | None = None, limit: int = 50) -> list[dict]:
-    """List facts, optionally filtered by category and/or text search.
-
-    Args:
-        category: Filter to a specific category (e.g. "preference"). None = all.
-        query: Substring search in fact text (case-insensitive). None = all.
-        limit: Maximum facts to return.
-    """
+    """List facts, optionally filtered by category and/or text search."""
     facts = load()
     if category:
         facts = [f for f in facts if f["category"] == category]
@@ -150,7 +148,6 @@ def search_facts(query: str, category: str | None = None, max_results: int = 20)
     scored = []
     for f in facts:
         text_lower = f["text"].lower()
-        # Score: exact match > substring > word overlap
         if text_lower == q:
             score = 1.0
         elif q in text_lower:

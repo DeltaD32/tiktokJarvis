@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 export function TasksPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [tasks, setTasks] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
@@ -9,7 +11,7 @@ export function TasksPanel({ onClose, message }) {
 
   const fetchTasks = useCallback(() => {
     setLoading(true)
-    fetch('/api/tasks')
+    fetch('/api/tasks', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setTasks(data); setLoading(false) })
       .catch(() => setLoading(false))

@@ -11,19 +11,24 @@ from datetime import datetime
 from pathlib import Path
 
 from dela.tools import register
+from dela import user_context
 
-_STORE = Path(__file__).resolve().parent.parent.parent / "dela_state" / "tasks.json"
+
+def _store() -> Path:
+    return user_context.resolve_state_path("tasks.json")
 
 
 def _load() -> list[dict]:
-    if not _STORE.exists():
+    store = _store()
+    if not store.exists():
         return []
-    return json.loads(_STORE.read_text(encoding="utf-8"))
+    return json.loads(store.read_text(encoding="utf-8"))
 
 
 def _save(tasks: list[dict]) -> None:
-    _STORE.parent.mkdir(parents=True, exist_ok=True)
-    _STORE.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
+    store = _store()
+    store.parent.mkdir(parents=True, exist_ok=True)
+    store.write_text(json.dumps(tasks, indent=2), encoding="utf-8")
 
 
 @register(

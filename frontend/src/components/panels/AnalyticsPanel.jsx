@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 function KpiCard({ label, value, sub, color, icon }) {
   return (
@@ -37,6 +38,7 @@ function BarRow({ name, count, max, color }) {
 }
 
 export function AnalyticsPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [data, setData] = useState(null)
   const [extras, setExtras] = useState({})
   const [loading, setLoading] = useState(true)
@@ -45,11 +47,11 @@ export function AnalyticsPanel({ onClose, message }) {
 
   const refresh = useCallback(() => {
     Promise.all([
-      fetch('/api/analytics').then(r => r.json()),
-      fetch('/api/agents').then(r => r.json()).catch(() => []),
-      fetch('/api/memory').then(r => r.json()).catch(() => []),
-      fetch('/api/state').then(r => r.json()).catch(() => []),
-      fetch('/api/workflows').then(r => r.json()).catch(() => []),
+      fetch('/api/analytics', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()),
+      fetch('/api/agents', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).catch(() => []),
+      fetch('/api/memory', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).catch(() => []),
+      fetch('/api/state', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).catch(() => []),
+      fetch('/api/workflows', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).catch(() => []),
     ])
       .then(([analytics, agents, memory, state, workflows]) => {
         setData(analytics)

@@ -182,7 +182,28 @@ dela/
 2. Write the new module following the exact pattern of similar modules.
 3. Register it (add the import to the appropriate __init__.py).
 4. Test it (use run_code to call the function and verify).
-   5. Report what was created and how to use it.
+5. Report what was created in this structured format:
+
+```
+## Implementation Report
+
+**Files created:**
+- `path/to/file.py` — description
+
+**Files modified:**
+- `path/to/file.py` — what changed and why
+
+**Verification:**
+- [PASS/FAIL] test description
+
+**How to use:**
+- Brief instruction
+
+**Dependencies added:**
+- name (if any) or "None"
+```
+
+If you cannot implement (blocked by architecture, missing access, etc.), explain why and recommend the correct approach instead. Never claim implementation was done if you only advised.
 
 ### When analyzing external repositories
 

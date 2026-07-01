@@ -15,11 +15,14 @@ import { useState, useRef, useCallback, useEffect } from 'react'
  *   - toggle: () => void — start/stop toggle
  *   - clearError: () => void — reset error state
  */
-export function useVoiceRecorder() {
+export function useVoiceRecorder(token) {
   const [recording, setRecording] = useState(false)
   const [transcript, setTranscript] = useState('')
   const [error, setError] = useState(null)
   const [transcribing, setTranscribing] = useState(false)
+
+  const tokenRef = useRef(token)
+  tokenRef.current = token
 
   const streamRef = useRef(null)
   const chunksRef = useRef([])
@@ -106,10 +109,13 @@ export function useVoiceRecorder() {
 
         setTranscribing(true)
         try {
+          const headers = {}
+          if (tokenRef.current) headers['Authorization'] = `Bearer ${tokenRef.current}`
           const res = await fetch('/api/voice/stt', {
             method: 'POST',
             body: blob,
             signal: controller.signal,
+            headers,
           })
           const data = await res.json()
           if (data.ok && data.text) {

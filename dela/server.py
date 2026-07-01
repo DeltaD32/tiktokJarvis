@@ -22,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from dela import audit, heartbeat, memory, noticeboard
+from dela import auth_middleware
 from dela.brain import respond
 from dela.gate import Confirmer, set_confirmer
 from dela.tools import registry
@@ -38,7 +39,7 @@ _profile = get_current_profile()
 async def lifespan(app: FastAPI):
     global _main_loop
     _main_loop = asyncio.get_event_loop()
-    set_confirmer(WebSocketConfirmer())
+    set_confirmer(UserSocketConfirmer())
     heartbeat.start()
     try:
         from dela import oauth
@@ -53,6 +54,10 @@ async def lifespan(app: FastAPI):
             _main_loop,
         )
     agent_status.on_change(_on_agent_status)
+    # ── Auth: seed default admin + migrate state on first run ──────────────────
+    _seed_admin()
+    from dela import user_context as _uc
+    _uc.migrate_to_multi_user()
     yield
     heartbeat.stop()
     heartbeat.stop()
@@ -70,35 +75,74 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(auth_middleware.AuthMiddleware)
 
-_clients: set[WebSocket] = set()
-_history: list[dict] = []
-_confirm_callbacks: dict[str, threading.Event] = {}
-_confirm_results: dict[str, bool] = {}
+# Per-user state. In single-user mode, keyed by None. In multi-user, keyed by user_id.
+_clients: dict[str | None, WebSocket] = {}
+_histories: dict[str | None, list[dict]] = {}
+_confirm_callbacks: dict[str | None, dict[str, threading.Event]] = {}
+_confirm_results: dict[str | None, dict[str, bool]] = {}
 _brain_lock = threading.Lock()
 _oauth_refresh_times: dict[str, float] = {}
+_login_attempts: dict[str, list[float]] = {}
+
+
+def _resolve_uid(ws: WebSocket | None = None) -> str | None:
+    """Resolve the effective user_id. In single-user mode, returns None.
+    In multi-user mode, falls back to None if no user context is set
+    (for components like heartbeat that don't have a user).
+    """
+    if auth_middleware._is_multi_user():
+        from dela import user_context as _uc
+        return _uc.current_user_id()
+    return None
 
 # ── Broadcast helpers ─────────────────────────────────────────────────────────
 
 async def _broadcast(payload: dict) -> None:
-    dead = set()
-    for ws in _clients:
+    """Broadcast to all connected clients."""
+    dead: set[str | None] = set()
+    for uid, ws in list(_clients.items()):
         try:
             await ws.send_json(payload)
         except Exception:
-            dead.add(ws)
-    _clients.difference_update(dead)
+            dead.add(uid)
+    for uid in dead:
+        _clients.pop(uid, None)
+
+
+async def _broadcast_to_user(user_id: str | None, payload: dict) -> None:
+    """Send a message to a specific user's WebSocket."""
+    ws = _clients.get(user_id)
+    if ws:
+        try:
+            await ws.send_json(payload)
+        except Exception:
+            _clients.pop(user_id, None)
 
 
 def broadcast_sync(payload: dict) -> None:
-    """Thread-safe broadcast from synchronous tool/gate code."""
+    """Thread-safe broadcast to all connected clients from synchronous code."""
     if _main_loop and _main_loop.is_running():
         asyncio.run_coroutine_threadsafe(_broadcast(payload), _main_loop)
+
+
+def broadcast_to_user_sync(user_id: str | None, payload: dict) -> None:
+    """Thread-safe broadcast to a specific user from synchronous code."""
+    if _main_loop and _main_loop.is_running():
+        asyncio.run_coroutine_threadsafe(_broadcast_to_user(user_id, payload), _main_loop)
 
 
 # Register broadcast with ui_tools so show_panel can reach connected clients
 from dela.tools import ui_tools as _ui_tools  # noqa: E402
 _ui_tools._broadcast_fn = broadcast_sync
+
+
+def _check_admin(request: Request) -> bool:
+    """Return True if the request is from an admin user. Always True in single-user mode."""
+    if not auth_middleware._is_multi_user():
+        return True
+    return auth_middleware.require_admin(request)
 
 # Register notice hook so new heartbeat notices push to connected clients
 def _on_notice(notice: dict) -> None:
@@ -107,23 +151,69 @@ def _on_notice(notice: dict) -> None:
 
 noticeboard.set_on_file_hook(_on_notice)
 
+# ── Auth: admin seeder ─────────────────────────────────────────────────────────
+
+def _seed_admin() -> None:
+    """Create default admin user on first run if no users exist."""
+    import os as _os
+    if _os.getenv("DELA_MULTI_USER", "0") != "1":
+        return
+    from dela import users, auth
+    if users.count_users() > 0:
+        return
+    admin_email = _os.getenv("DELA_ADMIN_EMAIL", "admin@dela.local")
+    admin_password = _os.getenv("DELA_ADMIN_PASSWORD", "changeme")
+    result = users.create_user(
+        username="admin",
+        password_hash=auth.hash_password(admin_password),
+        role="admin",
+        email=admin_email,
+        display_name="Administrator",
+    )
+    if result.get("ok"):
+        print(f"  [auth] Default admin created: admin / {admin_password}")
+    else:
+        print(f"  [auth] Admin seeder skipped: {result.get('error')}")
+    # Also ensure JWT secret is generated early
+    auth._get_secret()
+
 # ── Confirmation bridge ───────────────────────────────────────────────────────
 
-class WebSocketConfirmer:
-    """Routes confirmation requests through the browser's confirmation dialog."""
+class UserSocketConfirmer:
+    """Routes confirmation requests through the correct user's browser dialog.
+
+    In single-user mode: broadcasts to all clients (backward compat).
+    In multi-user mode: routes to the specific user whose brain is running,
+    based on the thread-local user context.
+    """
 
     def confirm(self, description: str, timeout: float | None = None) -> bool:
+        from dela import user_context as _uc
+        # Resolve which user to send the confirmation to
+        user_id = _uc.current_user_id() if _uc.is_multi_user() else None
+
         cid = str(uuid.uuid4())
         event = threading.Event()
-        _confirm_callbacks[cid] = event
-        _confirm_results[cid] = False
 
-        broadcast_sync({"type": "confirmation_request", "id": cid, "description": description})
+        # Ensure the per-user sub-dicts exist
+        _confirm_callbacks.setdefault(user_id, {})[cid] = event
+        _confirm_results.setdefault(user_id, {})[cid] = False
+
+        payload = {"type": "confirmation_request", "id": cid, "description": description}
+
+        if user_id is not None:
+            broadcast_to_user_sync(user_id, payload)
+        else:
+            broadcast_sync(payload)
 
         granted = event.wait(timeout=timeout if timeout is not None else 30.0)
-        _confirm_callbacks.pop(cid, None)
-        result = _confirm_results.pop(cid, False)
+        _confirm_callbacks.get(user_id, {}).pop(cid, None)
+        result = _confirm_results.get(user_id, {}).pop(cid, False)
         return granted and result
+
+
+# Alias for backward compat
+WebSocketConfirmer = UserSocketConfirmer
 
 
 # Lifecycle handled by the `lifespan` context manager above (FastAPI ≥ 0.109).
@@ -165,14 +255,18 @@ def api_get_audit(n: int = 60):
 
 
 @app.post("/api/heartbeat/kill")
-def api_hb_kill():
+def api_hb_kill(request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     heartbeat.kill()
     broadcast_sync({"type": "heartbeat_state", "active": False})
     return {"ok": True}
 
 
 @app.post("/api/heartbeat/resume")
-def api_hb_resume():
+def api_hb_resume(request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     heartbeat.resume()
     broadcast_sync({"type": "heartbeat_state", "active": True})
     return {"ok": True}
@@ -354,8 +448,10 @@ def api_list_models_endpoint():
 
 
 @app.get("/api/uplink")
-def api_uplink():
+def api_uplink(request: Request):
     """Check API connection + auth status for the active profile connection."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     import time
     from dela import connections
     from dela.profiles import get_current_profile_name
@@ -415,8 +511,10 @@ def api_uplink():
 
 
 @app.get("/api/ollama/status")
-def api_ollama_status():
+def api_ollama_status(request: Request):
     """Check if Ollama is running locally and list available models."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     import urllib.request
     import urllib.error
 
@@ -628,7 +726,9 @@ def api_security_status():
     return last_scan()
 
 @app.post("/api/security/scan")
-def api_security_scan():
+def api_security_scan(request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela.security import run_full_scan
     return run_full_scan()
 
@@ -638,13 +738,17 @@ def api_vuln_kb():
     return get_kb_info()
 
 @app.post("/api/vuln-kb/refresh")
-def api_vuln_kb_refresh():
+def api_vuln_kb_refresh(request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela.vuln_kb import refresh
     return refresh()
 
 @app.post("/api/security/fix")
-def api_security_fix(req: dict):
+def api_security_fix(req: dict, request: Request):
     """Dispatch the system_expert agent to analyze a security finding and recommend/implement a fix."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     finding_title = req.get("finding_title", "")
     finding_detail = req.get("finding_detail", "")
     finding_category = req.get("finding_category", "")
@@ -786,7 +890,9 @@ def api_get_settings():
     }
 
 @app.put("/api/settings/heartbeat")
-def api_update_heartbeat_setting(body: dict):
+def api_update_heartbeat_setting(body: dict, request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import hb_config
     import json as _json
     ALLOWED = {"interval", "checks"}  # only allow known heartbeat config keys
@@ -798,8 +904,10 @@ def api_update_heartbeat_setting(body: dict):
     return {"ok": True, "config": current}
 
 @app.put("/api/settings/env")
-def api_update_env_setting(body: dict):
+def api_update_env_setting(body: dict, request: Request):
     """Update a .env variable. Requires server restart to take effect."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     key = body.get("key", "")
     value = body.get("value", "").replace("\n", "").replace("\r", "")  # prevent env injection via newlines
     if not key or not key.startswith("DELA_"):
@@ -823,8 +931,10 @@ def api_update_env_setting(body: dict):
 
 
 @app.put("/api/settings/profile")
-def api_switch_profile(body: dict):
+def api_switch_profile(body: dict, request: Request):
     """Switch the security profile. Requires restart."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela.profiles import set_profile, PROFILES
     name = body.get("profile", "")
     if name not in PROFILES:
@@ -847,8 +957,10 @@ def api_get_live_settings():
 
 
 @app.put("/api/settings/live")
-def api_update_live_setting(body: dict):
+def api_update_live_setting(body: dict, request: Request):
     """Update a live setting. Takes effect immediately — no restart needed."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import live_config
     key = body.get("key", "")
     value = body.get("value")
@@ -863,8 +975,10 @@ def api_update_live_setting(body: dict):
 
 
 @app.delete("/api/settings/live/{key}")
-def api_reset_live_setting(key: str):
+def api_reset_live_setting(key: str, request: Request):
     """Reset a live setting to its config.py default."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import live_config
     if not live_config.is_live(key):
         return {"ok": False, "error": f"'{key}' is not a live setting."}
@@ -899,9 +1013,10 @@ def api_get_connection(name: str):
 
 
 @app.post("/api/connections")
-def api_upsert_connection(body: dict):
+def api_upsert_connection(body: dict, request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import connections
-    # If api_key/secret fields are blank or all-masked, preserve existing secret
     name = (body.get("name") or "").strip()
     if not name:
         return {"ok": False, "error": "Connection 'name' is required"}
@@ -929,7 +1044,9 @@ def api_upsert_connection(body: dict):
 
 
 @app.delete("/api/connections/{name}")
-def api_delete_connection(name: str):
+def api_delete_connection(name: str, request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import connections
     existed = connections.delete_connection(name)
     # Also drop any cached oauth token
@@ -944,7 +1061,9 @@ def api_delete_connection(name: str):
 
 
 @app.put("/api/connections/assign")
-def api_assign_connection(body: dict):
+def api_assign_connection(body: dict, request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import connections
     profile = body.get("profile", "")
     conn_name = body.get("connection", "")
@@ -956,7 +1075,9 @@ def api_assign_connection(body: dict):
 
 
 @app.post("/api/connections/{name}/test")
-def api_test_connection(name: str):
+def api_test_connection(name: str, request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import connections, oauth
     conn = connections.get_connection(name)
     if conn is None:
@@ -981,7 +1102,9 @@ def api_oauth_status():
 
 
 @app.post("/api/oauth/refresh")
-def api_oauth_refresh(body: dict):
+def api_oauth_refresh(body: dict, request: Request):
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
     from dela import connections, oauth
     name = body.get("name", "")
     conn = connections.get_connection(name)
@@ -1040,63 +1163,332 @@ def api_update_hb_config(body: dict):
     return {"ok": True, "config": filtered}
 
 
+# ── Auth endpoints ─────────────────────────────────────────────────────────────
+
+@app.post("/api/auth/login")
+def api_auth_login(body: dict, request: Request):
+    """Login: validate credentials, return JWT access + refresh tokens."""
+    import os as _os
+    if _os.getenv("DELA_MULTI_USER", "0") != "1":
+        return {"ok": False, "error": "Multi-user mode is not enabled"}
+    from dela import auth, users
+
+    # ── Rate limiting ──────────────────────────────────────────────────────────
+    ip = request.client.host if request.client else "unknown"
+    max_attempts = int(_os.getenv("DELA_MAX_LOGIN_ATTEMPTS", "5"))
+    lockout_mins = int(_os.getenv("DELA_LOGIN_LOCKOUT_MINUTES", "15"))
+    now = time.time()
+    window = lockout_mins * 60
+    _login_attempts.setdefault(ip, []).append(now)
+    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < window]
+    if len(_login_attempts[ip]) > max_attempts:
+        remaining = int(window - (now - _login_attempts[ip][0]))
+        return {"ok": False, "error": f"Too many login attempts. Try again in {remaining}s"}
+
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+
+    if not username or not password:
+        return {"ok": False, "error": "Username and password are required"}
+
+    user = users.get_user_with_password(username)
+    if user is None:
+        return {"ok": False, "error": "Invalid username or password"}
+
+    if not auth.verify_password(password, user["password"]):
+        return {"ok": False, "error": "Invalid username or password"}
+
+    # Successful login — clear rate limit for this IP
+    _login_attempts.pop(ip, None)
+
+    users.record_login(user["id"])
+
+    access_token = auth.create_access_token(user["id"], user["username"], user["role"])
+    refresh_token = auth.create_refresh_token(user["id"], user["username"], user["role"])
+
+    users.create_session(user["id"], refresh_token, auth.get_token_expiry(refresh_token))
+    users.prune_expired_sessions()
+
+    return {
+        "ok": True,
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_at": auth.get_token_expiry(access_token),
+        "user": {
+            "id": user["id"],
+            "username": user["username"],
+            "email": user.get("email"),
+            "role": user["role"],
+            "display_name": user.get("display_name"),
+        },
+    }
+
+
+@app.post("/api/auth/refresh")
+def api_auth_refresh(body: dict):
+    """Refresh an access token using a refresh token."""
+    from dela import auth
+    refresh_token = (body.get("refresh_token") or "").strip()
+    if not refresh_token:
+        return {"ok": False, "error": "refresh_token is required"}
+    return auth.refresh_access_token(refresh_token)
+
+
+@app.post("/api/auth/logout")
+def api_auth_logout(request: Request):
+    """Logout: revoke the current session token."""
+    from dela import users
+    auth_header = request.headers.get("Authorization", "")
+    if auth_header.startswith("Bearer "):
+        token = auth_header[len("Bearer "):]
+        users.revoke_session(token)
+    return {"ok": True}
+
+
+@app.get("/api/auth/me")
+def api_auth_me(request: Request):
+    """Return the current authenticated user's profile."""
+    user = auth_middleware.get_current_user(request)
+    if user is None:
+        return {"ok": False, "error": "Not authenticated"}
+    from dela import users
+    profile = users.get_user(user["id"])
+    if profile is None:
+        return {"ok": False, "error": "User not found"}
+    return {"ok": True, "user": profile}
+
+
+@app.get("/api/users")
+def api_list_users(request: Request):
+    """List all users (admin only)."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
+    from dela import users
+    return users.list_users()
+
+
+@app.post("/api/users")
+def api_create_user(body: dict, request: Request):
+    """Create a new user (admin only)."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
+    from dela import auth, users
+    username = (body.get("username") or "").strip()
+    password = body.get("password") or ""
+    role = body.get("role", "user")
+    email = (body.get("email") or "").strip() or None
+    err = auth.validate_password_policy(password)
+    if err:
+        return {"ok": False, "error": err}
+    if not username:
+        return {"ok": False, "error": "Username is required"}
+    return users.create_user(
+        username=username,
+        password_hash=auth.hash_password(password),
+        role=role,
+        email=email,
+    )
+
+
+@app.delete("/api/users/{user_id}")
+def api_delete_user(user_id: str, request: Request):
+    """Delete/deactivate a user (admin only)."""
+    if not _check_admin(request):
+        return {"ok": False, "error": "Admin access required"}
+    from dela import users
+    ok = users.delete_user(user_id)
+    return {"ok": ok}
+
+
+@app.post("/api/report/action")
+def api_report_action(body: dict, request: Request):
+    """Handle report panel actions: shelve, reject, accept."""
+    from dela import auth_middleware as _am
+    if not _am.require_user(request):
+        return {"ok": False, "error": "Authentication required"}
+
+    from dela import memory, audit
+    action = body.get("action", "")
+    feature = body.get("feature", "Unknown")
+    report = body.get("report", "")
+    title = body.get("title", "")
+
+    if action not in ("shelve", "reject", "accept"):
+        return {"ok": False, "error": "Invalid action. Use: shelve, reject, or accept"}
+
+    # Extract a summary from the HTML report for memory storage
+    summary = f"Feature analysis for \"{feature}\": {action.upper()}"
+    if report:
+        # Extract the first paragraph after "What It Does"
+        import re
+        match = re.search(r'<h2>What It Does</h2>\s*<p>(.*?)</p>', report, re.DOTALL)
+        if match:
+            summary = f"{feature}: {match.group(1).strip()[:200]}"
+
+    # Store in memory for future reference
+    category = f"feature-{action}"
+    memory.add(summary, category)
+
+    # Audit the action
+    audit._write_event(f"FEATURE_REPORT [{action.upper()}] {feature}")
+
+    messages = {
+        "shelve": f"Feature \"{feature}\" shelved — research preserved. Use 'list facts in category feature-shelve' to review later.",
+        "reject": f"Feature \"{feature}\" rejected — analysis archived.",
+        "accept": f"Feature \"{feature}\" accepted — ready for implementation. The user will provide preferences.",
+    }
+
+    return {"ok": True, "message": messages.get(action, ""), "feature": feature}
+
+
+@app.put("/api/auth/password")
+def api_auth_change_password(body: dict, request: Request):
+    """Change password for the current authenticated user."""
+    user = auth_middleware.get_current_user(request)
+    if user is None:
+        return {"ok": False, "error": "Not authenticated"}
+    from dela import auth, users
+
+    current_password = body.get("current_password") or ""
+    new_password = body.get("new_password") or ""
+
+    if not current_password or not new_password:
+        return {"ok": False, "error": "current_password and new_password are required"}
+
+    # Validate password policy
+    err = auth.validate_password_policy(new_password)
+    if err:
+        return {"ok": False, "error": err}
+
+    # Verify current password
+    u = users.get_user_with_password(user["username"])
+    if u is None or not auth.verify_password(current_password, u["password"]):
+        return {"ok": False, "error": "Current password is incorrect"}
+
+    # Update password
+    new_hash = auth.hash_password(new_password)
+    result = users.update_user(user["id"], password=new_hash)
+    if result and not isinstance(result, dict) or (isinstance(result, dict) and not result.get("error")):
+        return {"ok": True}
+    return {"ok": False, "error": "Failed to update password"}
+
+
 # ── WebSocket ─────────────────────────────────────────────────────────────────
 
 @app.websocket("/ws")
 async def ws_endpoint(ws: WebSocket) -> None:
+    # ── Authenticate (multi-user) or accept (single-user) ──────────────────────
+    user_id: str | None = None
+    user_info: dict | None = None
+
+    if auth_middleware._is_multi_user():
+        token = ws.query_params.get("token", "")
+        if not token:
+            await ws.accept()
+            await ws.send_json({"type": "error", "message": "Missing token query parameter"})
+            await ws.close(code=4001)
+            return
+        from dela import auth as _auth, users as _users
+        try:
+            payload = _auth.decode_token(token)
+        except Exception:
+            await ws.accept()
+            await ws.send_json({"type": "error", "message": "Invalid or expired token"})
+            await ws.close(code=4001)
+            return
+        if _users.is_session_revoked(payload.get("jti", "")):
+            await ws.accept()
+            await ws.send_json({"type": "error", "message": "Token has been revoked"})
+            await ws.close(code=4001)
+            return
+        user_id = payload["sub"]
+        user_info = {"id": user_id, "username": payload["username"], "role": payload["role"]}
+
+    # ── Connection limit ───────────────────────────────────────────────────────
     MAX_CLIENTS = 10
     if len(_clients) >= MAX_CLIENTS:
         await ws.accept()
         await ws.send_json({"type": "error", "message": "Too many connections"})
         await ws.close()
         return
+
     await ws.accept()
+
+    # ── Set user context for state isolation ────────────────────────────────────
+    from dela import user_context as _uc
+    if user_id:
+        _uc.set_current_user_id(user_id)
+
+    # ── Ensure per-user structures exist ────────────────────────────────────────
+    _histories.setdefault(user_id, [])
+    _confirm_callbacks.setdefault(user_id, {})
+    _confirm_results.setdefault(user_id, {})
+
     try:
+        # User-scoped init
         await ws.send_json({
             "type": "init",
             "notices": noticeboard.active(),
             "heartbeat_active": not heartbeat.is_killed(),
             "cost": audit.cost_summary(),
+            "user": user_info,
         })
     except Exception:
-        return  # client already gone, don't add to _clients
-    _clients.add(ws)
+        _uc.clear_current_user_id()
+        return  # client already gone
+
+    # ── Register client ────────────────────────────────────────────────────────
+    # Replace any existing connection for this user
+    old_ws = _clients.get(user_id)
+    if old_ws is not None and old_ws is not ws:
+        try:
+            await old_ws.close(code=1000)
+        except Exception:
+            pass
+    _clients[user_id] = ws
+
     try:
         while True:
             data = await ws.receive_json()
             t = data.get("type")
 
             if t == "message":
-                await _handle_message(data["content"])
+                await _handle_message(data["content"], user_id=user_id)
             elif t == "confirm":
                 cid = data.get("id", "")
                 approved = bool(data.get("approved", False))
-                _confirm_results[cid] = approved
-                ev = _confirm_callbacks.get(cid)
+                _confirm_results.get(user_id, {})[cid] = approved
+                ev = _confirm_callbacks.get(user_id, {}).get(cid)
                 if ev:
                     ev.set()
             elif t == "dismiss_notice":
                 noticeboard.dismiss(data["id"])
-                await _broadcast({"type": "notices_refresh", "notices": noticeboard.active()})
+                await _broadcast_to_user(user_id, {"type": "notices_refresh", "notices": noticeboard.active()})
     except WebSocketDisconnect:
         pass
     finally:
-        _clients.discard(ws)
+        _clients.pop(user_id, None)
+        _uc.clear_current_user_id()
 
 
-async def _handle_message(user_text: str) -> None:
+async def _handle_message(user_text: str, *, user_id: str | None = None) -> None:
     if not _brain_lock.acquire(blocking=False):
-        await _broadcast({"type": "token", "content": "[Dela is still thinking — please wait]", "tool_blip": False})
+        await _broadcast_to_user(user_id, {"type": "token", "content": "[Dela is still thinking — please wait]", "tool_blip": False})
         return
 
-    await _broadcast({"type": "state_change", "state": "thinking"})
+    await _broadcast_to_user(user_id, {"type": "state_change", "state": "thinking"})
     loop = asyncio.get_event_loop()
     queue: asyncio.Queue[str | None] = asyncio.Queue()
     turn_timeout = 300  # 5-minute watchdog
 
+    history = _histories.get(user_id, [])
+
     def _run() -> None:
+        from dela import user_context as _uc
+        if user_id:
+            _uc.set_current_user_id(user_id)
         try:
-            for token in respond(_history, user_text):
+            for token in respond(history, user_text):
                 asyncio.run_coroutine_threadsafe(queue.put(token), loop)
         except Exception as e:
             asyncio.run_coroutine_threadsafe(queue.put(f"[error: {e}]"), loop)
@@ -1123,26 +1515,25 @@ async def _handle_message(user_text: str) -> None:
         token = await queue.get()
         if token is None:
             break
-        # Only tool status messages like "[ran fetch_url]" are tool blips.
-        # Error messages like "[error: ...]" or "[I can't reach...]" are real content.
         is_blip = token.startswith("[") and token.endswith("]") and not token.startswith("[error") and not token.startswith("[I can't")
         if is_blip:
             blip_count += 1
         else:
             token_count += 1
-        await _broadcast({
+        await _broadcast_to_user(user_id, {
             "type": "token",
             "content": token,
             "tool_blip": is_blip,
         })
         if not is_blip:
-            await _broadcast({"type": "state_change", "state": "speaking"})
+            await _broadcast_to_user(user_id, {"type": "state_change", "state": "speaking"})
 
-    print(f"  [brain] turn complete: {token_count} text tokens, {blip_count} tool blips, reply_len={sum(len(t) for t in [_history[-1].get('content','')] if _history)}, history_msgs={len(_history)}")
+    hist = _histories.get(user_id, [])
+    print(f"  [brain] turn complete: {token_count} text tokens, {blip_count} tool blips, history_msgs={len(hist)}")
 
-    await _broadcast({"type": "reply_done"})
-    await _broadcast({"type": "state_change", "state": "idle"})
-    await _broadcast({"type": "cost_update", "cost": audit.cost_summary()})
+    await _broadcast_to_user(user_id, {"type": "reply_done"})
+    await _broadcast_to_user(user_id, {"type": "state_change", "state": "idle"})
+    await _broadcast_to_user(user_id, {"type": "cost_update", "cost": audit.cost_summary()})
 
 
 # ── Static files (production build) ──────────────────────────────────────────

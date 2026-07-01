@@ -24,7 +24,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-_BB_ROOT = Path(__file__).resolve().parent.parent / "dela_state" / "blackboards"
+from dela import user_context
+
+
+def _bb_root() -> Path:
+    return user_context.resolve_state_dir("blackboards")
 
 # Status constants
 DELIBERATING = "deliberating"
@@ -45,7 +49,7 @@ VALID_TRANSITIONS = {
 
 
 def _bb_path(blackboard_id: str) -> Path:
-    return _BB_ROOT / f"{blackboard_id}.json"
+    return _bb_root() / f"{blackboard_id}.json"
 
 
 def _now() -> str:
@@ -63,11 +67,11 @@ def create(
     created_by: str = "orchestrator",
 ) -> dict[str, Any]:
     """Create a new blackboard. Returns the blackboard dict."""
-    _BB_ROOT.mkdir(parents=True, exist_ok=True)
+    _bb_root().mkdir(parents=True, exist_ok=True)
 
     # Generate a unique ID: timestamp + short counter
     ts = time.strftime("%Y%m%d-%H%M%S")
-    existing = list(_BB_ROOT.glob(f"bb-{ts}*.json"))
+    existing = list(_bb_root().glob(f"bb-{ts}*.json"))
     blackboard_id = f"bb-{ts}-{len(existing)+1:03d}"
 
     bb = {
@@ -257,10 +261,10 @@ def archive(blackboard_id: str) -> bool:
 
 def list_active() -> list[dict[str, Any]]:
     """List all non-archived blackboards."""
-    if not _BB_ROOT.exists():
+    if not _bb_root().exists():
         return []
     results = []
-    for path in _BB_ROOT.glob("*.json"):
+    for path in _bb_root().glob("*.json"):
         try:
             bb = json.loads(path.read_text(encoding="utf-8"))
             if bb.get("status") != ARCHIVED:
@@ -278,10 +282,10 @@ def list_active() -> list[dict[str, Any]]:
 
 def list_all() -> list[dict[str, Any]]:
     """List all blackboards including archived."""
-    if not _BB_ROOT.exists():
+    if not _bb_root().exists():
         return []
     results = []
-    for path in _BB_ROOT.glob("*.json"):
+    for path in _bb_root().glob("*.json"):
         try:
             bb = json.loads(path.read_text(encoding="utf-8"))
             results.append({

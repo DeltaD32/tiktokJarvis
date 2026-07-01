@@ -9,6 +9,11 @@ import { HitlGate }            from './components/HitlGate'
 import { HiveWindow }          from './components/HiveWindow'
 import { StreamWindow }        from './components/StreamWindow'
 import { SandboxWindow }       from './components/SandboxWindow'
+import { LoginPage }           from './components/LoginPage'
+import { AdminPanel }          from './components/panels/AdminPanel'
+import { ReportPanel }         from './components/panels/ReportPanel'
+import { ReportProgressBar }   from './components/ReportProgressBar'
+import { ConversationPanel }   from './components/ConversationPanel'
 import { MemoryPanel }         from './components/panels/MemoryPanel'
 import { StateBrowserPanel }   from './components/panels/StateBrowserPanel'
 import { ToolBrowserPanel }    from './components/panels/ToolBrowserPanel'
@@ -26,6 +31,7 @@ import { SubAgentOverlay }     from './components/SubAgentOverlay'
 import { useDelaWS }            from './hooks/useDelaWS'
 import { useVoiceRecorder }     from './hooks/useVoiceRecorder'
 import { useVoiceTTS }          from './hooks/useVoiceTTS'
+import { useAuth }             from './contexts/AuthContext'
 import { applyTheme, getCurrentTheme, THEMES } from './themes'
 
 const ACCENT_RGB = {
@@ -50,13 +56,21 @@ Object.assign(ACCENT_RGB, {
 
 
 export default function App() {
+  const { isAuthenticated } = useAuth()
+  if (!isAuthenticated) return <LoginPage />
+  return <AuthenticatedApp />
+}
+
+function AuthenticatedApp() {
+  const { user, token, isAdmin, logout } = useAuth()
+
   const {
     connected, orbState, conversation, currentStream, toolStatus,
-    activePanel, panelMessage, confirmRequest,
+    activePanel, panelMessage, panelContent, panelTitle, confirmRequest,
     notices, noticeCount, heartbeatActive, cost,
     sendMessage, sendConfirm, closePanel, dismissNotice,
-    killHeartbeat, resumeHeartbeat, agentStatus,
-  } = useDelaWS()
+    killHeartbeat, resumeHeartbeat, agentStatus, featureProgress,
+  } = useDelaWS(token)
 
   const [input, setInput] = useState('')
   const [panels, setPanels] = useState({
@@ -75,8 +89,8 @@ export default function App() {
   const [idleExpanded, setIdleExpanded] = useState(false)
 
   // Voice
-  const { recording, transcribing, error: voiceError, toggle: toggleVoice, clearError: clearVoiceError } = useVoiceRecorder()
-  const { speaking: ttsSpeaking, speak: ttsSpeak, stop: ttsStop } = useVoiceTTS()
+  const { recording, transcribing, error: voiceError, toggle: toggleVoice, clearError: clearVoiceError } = useVoiceRecorder(token)
+  const { speaking: ttsSpeaking, speak: ttsSpeak, stop: ttsStop } = useVoiceTTS(token)
 
   // Initialize theme on mount + clear stale voice error
   useEffect(() => {
@@ -96,16 +110,17 @@ export default function App() {
 
   const fetchWithAbort = useCallback((url, onOk, onErr) => {
     const controller = new AbortController()
-    // Abort any in-flight request before starting a new one
     if (fetchControllerRef.current) fetchControllerRef.current.abort()
     fetchControllerRef.current = controller
-    fetch(url, { signal: controller.signal })
+    const headers = {}
+    if (token) headers['Authorization'] = `Bearer ${token}`
+    fetch(url, { signal: controller.signal, headers })
       .then(r => r.json())
       .then(onOk)
       .catch(err => {
         if (err.name !== 'AbortError') onErr?.()
       })
-  }, [])
+  }, [token])
 
   const fetchUplink = useCallback(() => {
     fetchWithAbort('/api/uplink', setUplink, () => setUplink({ status: 'unreachable' }))
@@ -273,16 +288,35 @@ export default function App() {
     }
   }, [recording, toggleVoice, sendMessage])
 
-  // TTS: speak Dela's reply when a new assistant message arrives (only if voice enabled)
+  // TTS: buffer-then-speak — waits for reply_done before speaking, except short acks
   const lastReplyRef = useRef('')
+  const pendingSpeechRef = useRef('')
   useEffect(() => {
     if (!voiceEnabled || conversation.length === 0) return
     const lastMsg = conversation[conversation.length - 1]
     if (lastMsg.role === 'assistant' && lastMsg.content && lastMsg.content !== lastReplyRef.current) {
       lastReplyRef.current = lastMsg.content
-      ttsSpeak(lastMsg.content)
+      const text = lastMsg.content
+      // Skip HTML reports
+      if (text.includes('<h1>') || text.startsWith('```html')) return
+      // Short acknowledgments: speak immediately
+      if (text.length < 120 && (text.includes('Got it') || text.includes('let me') || text.includes('Sure'))) {
+        ttsSpeak(text)
+        return
+      }
+      // Otherwise buffer — will be spoken after idle/reply_done via the streaming completion below
+      pendingSpeechRef.current = text
     }
   }, [conversation, voiceEnabled, ttsSpeak])
+
+  // Speak buffered text when streaming completes (orbState goes idle or speaking with no currentStream)
+  useEffect(() => {
+    if (!voiceEnabled || !pendingSpeechRef.current) return
+    if ((orbState === 'speaking' || orbState === 'idle') && !currentStream) {
+      ttsSpeak(pendingSpeechRef.current)
+      pendingSpeechRef.current = ''
+    }
+  }, [orbState, currentStream, voiceEnabled, ttsSpeak])
 
   // Stop TTS when state changes to thinking (barge-in)
   useEffect(() => {
@@ -326,6 +360,8 @@ export default function App() {
             setVoiceEnabled(next)
             if (!next) ttsStop()
           }}
+          user={user}
+          onLogout={logout}
         />
       </div>
 
@@ -347,6 +383,9 @@ export default function App() {
         <button className="float-btn" onClick={() => openLocalPanel('agents')} title="Agents">🤖</button>
         <button className="float-btn" onClick={() => openLocalPanel('tools')} title="Tools">🔧</button>
         <button className="float-btn" onClick={() => openLocalPanel('settings')} title="Settings">⚡</button>
+        {isAdmin && (
+          <button className="float-btn" onClick={() => openLocalPanel('admin')} title="User Management">👥</button>
+        )}
       </div>
 
       {/* Idle view */}
@@ -426,63 +465,20 @@ export default function App() {
       {/* Sub-agent activity overlay */}
       <SubAgentOverlay agentStatus={agentStatus} toolStatus={toolStatus} orbState={orbState} />
 
+      {/* Report progress bar */}
+      <ReportProgressBar featureProgress={featureProgress} />
+
       {/* Voice HUD */}
       <VoiceHud speaking={ttsSpeaking} caption={caption} recording={recording} transcribing={transcribing} />
 
-      {/* Conversation overlay — smooth fade in/out */}
-      <div className={`conv-overlay${!isIdle && (conversation.length > 0 || currentStream || toolStatus) ? ' visible' : ''}`}>
-        {conversation.slice(-8).map(msg => (
-            <div
-              key={msg.id}
-              className={`conv-msg ${msg.role}`}
-              title="Click or press Enter to copy"
-              tabIndex={0}
-              role="button"
-              style={{ cursor: 'pointer', wordBreak: 'break-all', overflowWrap: 'break-word' }}
-              onClick={() => {
-                navigator.clipboard.writeText(msg.content).catch(() => {
-                  const ta = document.createElement('textarea')
-                  ta.value = msg.content
-                  ta.style.position = 'fixed'; ta.style.opacity = '0'
-                  document.body.appendChild(ta)
-                  ta.select()
-                  try { document.execCommand('copy') } catch (_) {}
-                  document.body.removeChild(ta)
-                })
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' || e.key === ' ') {
-                  e.preventDefault()
-                  navigator.clipboard.writeText(msg.content).catch(() => {
-                    const ta = document.createElement('textarea')
-                    ta.value = msg.content
-                    ta.style.position = 'fixed'; ta.style.opacity = '0'
-                    document.body.appendChild(ta)
-                    ta.select()
-                    try { document.execCommand('copy') } catch (_) {}
-                    document.body.removeChild(ta)
-                  })
-                }
-              }}
-            >
-              <span className="conv-role-tag">{msg.role === 'user' ? 'YOU' : 'DELA'}</span>
-              {msg.content.slice(0, 60)}{msg.content.length > 60 ? '…' : ''}
-            </div>
-          ))}
-          {currentStream && (
-            <div className="conv-msg streaming" style={{ wordBreak: 'break-all', overflowWrap: 'break-word' }}>
-              <span className="conv-role-tag" style={{ color: 'var(--accent)' }}>DELA</span>
-              {currentStream.slice(0, 60)}{currentStream.length > 60 ? '…' : ''}
-              <span style={{ animation: 'jblink 1s steps(1) infinite', color: 'var(--accent)' }}>▍</span>
-            </div>
-          )}
-          {toolStatus && (
-            <div className="conv-msg tool-blip" style={{ wordBreak: 'break-all' }}>
-              <span className="conv-role-tag" style={{ color: 'var(--amber)' }}>TOOL</span>
-              {toolStatus}
-            </div>
-          )}
-        </div>
+      {/* Conversation panel — rich message cards, streaming status, persistent */}
+      <ConversationPanel
+        conversation={conversation}
+        currentStream={currentStream}
+        toolStatus={toolStatus}
+        orbState={orbState}
+        ttsSpeaking={ttsSpeaking}
+      />
 
       {/* Dock — smooth transition */}
       <div style={{ opacity: isIdle ? 0 : 1, transform: isIdle ? 'translateY(12px)' : 'translateY(0)', transition: 'opacity 0.35s cubic-bezier(0.22, 1, 0.36, 1), transform 0.35s cubic-bezier(0.22, 1, 0.36, 1)', pointerEvents: isIdle ? 'none' : 'auto' }}>
@@ -571,6 +567,12 @@ export default function App() {
         )}
         {panel === 'workflows' && (
           <WorkflowDesignerPanel key="workflows" onClose={handleClose} message={panelMessage} />
+        )}
+        {panel === 'admin' && (
+          <AdminPanel key="admin" onClose={handleClose} token={token} />
+        )}
+        {panel === 'report' && (
+          <ReportPanel key="report" onClose={handleClose} message={panelMessage} content={panelContent} title={panelTitle} onSendMessage={sendMessage} />
         )}
       </AnimatePresence>
 

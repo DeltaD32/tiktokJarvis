@@ -7,28 +7,59 @@ plain text, append-only, and human-readable.
 
 A running cost tally is kept so a runaway loop is visible immediately — not an
 invoice, just a visible counter that updates as calls accumulate.
+
+In multi-user mode, logs and cost tallies are per-user under dela_state/users/{id}/.
 """
 
 from __future__ import annotations
 
+import json
 import time
 from pathlib import Path
 
-_LOG = Path(__file__).resolve().parent.parent / "dela_state" / "audit.log"
-_COST = Path(__file__).resolve().parent.parent / "dela_state" / "cost_tally.json"
+from dela import user_context
 
 _model_calls = 0
 _estimated_cost = 0.0
+_last_uid: str | None = None
+
+
+def _log_path() -> Path:
+    return user_context.resolve_state_path("audit.log")
+
+
+def _cost_path() -> Path:
+    return user_context.resolve_state_path("cost_tally.json")
 
 
 def _ts() -> str:
     return time.strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _user_prefix() -> str:
+    uid = user_context.current_user_id()
+    if uid:
+        return f"[user:{uid[:8]}] "
+    return ""
+
+
 def _write(line: str) -> None:
-    _LOG.parent.mkdir(parents=True, exist_ok=True)
-    with open(_LOG, "a", encoding="utf-8") as f:
+    p = _log_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with open(p, "a", encoding="utf-8") as f:
         f.write(line + "\n")
+
+
+def _load_cost() -> None:
+    global _model_calls, _estimated_cost
+    p = _cost_path()
+    if p.exists():
+        try:
+            data = json.loads(p.read_text(encoding="utf-8"))
+            _model_calls = data.get("model_calls", 0)
+            _estimated_cost = data.get("estimated_cost_usd", 0.0)
+        except (json.JSONDecodeError, OSError):
+            pass
 
 
 def tool_call(name: str, args: dict, result: str, confirmed: bool | None = None) -> None:
@@ -37,43 +68,35 @@ def tool_call(name: str, args: dict, result: str, confirmed: bool | None = None)
         tag = " [confirmed by user]"
     elif confirmed is False:
         tag = " [DENIED by user]"
-    elif confirmed is None and name:
-        pass
-    _write(f"[{_ts()}] TOOL {name}({args}){tag} -> {result[:200]}")
+    _write(f"[{_ts()}] {_user_prefix()}TOOL {name}({args}){tag} -> {result[:200]}")
 
 
 def confirmation_request(tool_name: str, description: str, granted: bool) -> None:
     verdict = "GRANTED" if granted else "DENIED"
-    _write(f"[{_ts()}] GATE {tool_name}: {description} -> {verdict}")
+    _write(f"[{_ts()}] {_user_prefix()}GATE {tool_name}: {description} -> {verdict}")
 
 
 def heartbeat_notice(source: str, message: str, severity: str) -> None:
-    _write(f"[{_ts()}] HEARTBEAT [{severity}] {source}: {message}")
+    _write(f"[{_ts()}] {_user_prefix()}HEARTBEAT [{severity}] {source}: {message}")
 
 
 def model_call(model: str, input_tokens: int = 0, output_tokens: int = 0) -> None:
-    """Record a model call and update the cost tally.
-
-    Token counts are estimated when the provider doesn't report them. The cost
-    is a rough estimate — enough to spot a runaway loop, not an invoice.
-    """
     global _model_calls, _estimated_cost
+    _load_cost()
     _model_calls += 1
-    # Rough cost estimate per call (conservative; varies by model).
     rate = 0.002  # ~$0.002 per call as a visible counter
     _estimated_cost += rate
     _write(
-        f"[{_ts()}] MODEL {model} call #{_model_calls} "
+        f"[{_ts()}] {_user_prefix()}MODEL {model} call #{_model_calls} "
         f"(in~{input_tokens} out~{output_tokens}) est_cost~${_estimated_cost:.4f}"
     )
     _save_cost()
 
 
 def _save_cost() -> None:
-    import json
-
-    _COST.parent.mkdir(parents=True, exist_ok=True)
-    _COST.write_text(
+    p = _cost_path()
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_text(
         json.dumps(
             {"model_calls": _model_calls, "estimated_cost_usd": round(_estimated_cost, 4)},
             indent=2,
@@ -83,14 +106,15 @@ def _save_cost() -> None:
 
 
 def cost_summary() -> str:
+    _load_cost()
     return f"{_model_calls} model calls, est. cost ${_estimated_cost:.4f}"
 
 
 def analytics() -> dict:
     """Return structured analytics data parsed from the audit log."""
-    import json as _json
     from collections import Counter
 
+    _load_cost()
     result = {
         "model_calls": _model_calls,
         "estimated_cost_usd": round(_estimated_cost, 4),
@@ -103,10 +127,11 @@ def analytics() -> dict:
         "recent_events": [],
     }
 
-    if not _LOG.exists():
+    p = _log_path()
+    if not p.exists():
         return result
 
-    lines = _LOG.read_text(encoding="utf-8").splitlines()
+    lines = p.read_text(encoding="utf-8").splitlines()
     tool_counter: Counter = Counter()
     recent: list[dict] = []
 
@@ -117,14 +142,21 @@ def analytics() -> dict:
                 ts = line[1:ts_end]
                 rest = line[ts_end + 2:]
             except ValueError:
-                continue  # malformed line — skip
+                continue
 
             if not rest or len(rest) < 2:
-                continue  # empty or too short
+                continue
+
+            # Strip user prefix for parsing
+            if rest.startswith("[user:"):
+                try:
+                    uid_end = rest.index("] ")
+                    rest = rest[uid_end + 2:]
+                except ValueError:
+                    pass
 
             if rest.startswith("TOOL "):
                 result["tool_calls"] += 1
-                # Extract tool name
                 parts = rest[5:].split("(", 1)
                 if parts:
                     tool_name = parts[0].strip()
@@ -152,17 +184,17 @@ def analytics() -> dict:
 
 
 def kill_switch(state: str) -> None:
-    _write(f"[{_ts()}] KILL_SWITCH {state}")
+    _write(f"[{_ts()}] {_user_prefix()}KILL_SWITCH {state}")
 
 
 def _write_event(event: str) -> None:
-    """Write a generic event line (used by tracing for sub-agent events, etc.)."""
-    _write(f"[{_ts()}] {event}")
+    _write(f"[{_ts()}] {_user_prefix()}{event}")
 
 
 def tail(n: int = 20) -> str:
     """Return the last n lines of the audit log for display."""
-    if not _LOG.exists():
+    p = _log_path()
+    if not p.exists():
         return "(audit log is empty)"
-    lines = _LOG.read_text(encoding="utf-8").splitlines()
+    lines = p.read_text(encoding="utf-8").splitlines()
     return "\n".join(lines[-n:])

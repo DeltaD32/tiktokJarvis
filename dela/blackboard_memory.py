@@ -155,9 +155,10 @@ def cleanup_old_blackboards() -> dict[str, int]:
 
     Returns counts: {"archived": N, "deleted": M, "remaining": K}
     """
-    from dela.blackboard import _BB_ROOT, ARCHIVED
+    from dela.blackboard import _bb_root, ARCHIVED
 
-    if not _BB_ROOT.exists():
+    root = _bb_root()
+    if not root.exists():
         return {"archived": 0, "deleted": 0, "remaining": 0}
 
     now = time.time()
@@ -167,7 +168,7 @@ def cleanup_old_blackboards() -> dict[str, int]:
     deleted_count = 0
     remaining = 0
 
-    for path in _BB_ROOT.glob("*.json"):
+    for path in root.glob("*.json"):
         try:
             bb = json.loads(path.read_text(encoding="utf-8"))
             if bb.get("status") == ARCHIVED:

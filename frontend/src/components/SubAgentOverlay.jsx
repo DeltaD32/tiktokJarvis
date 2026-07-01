@@ -19,7 +19,9 @@ const ANIM_STYLE = `
 }
 `
 
-function AgentPanel({ agent, color, activityLog, expanded, onToggleExpand, onDismiss, defaultPos }) {
+const DISMISS_DELAY = 5000
+
+function AgentPanel({ agent, color, activityLog, expanded, onToggleExpand, onDismiss, defaultPos, state }) {
   const panelRef = useRef(null)
   const dragRef = useRef({ dragging: false, startX: 0, startY: 0, posX: 0, posY: 0 })
   const [pos, setPos] = useState(defaultPos || { x: 50, y: 50 })
@@ -31,7 +33,7 @@ function AgentPanel({ agent, color, activityLog, expanded, onToggleExpand, onDis
   }
 
   const onMouseDown = (e) => {
-    if (e.target.tagName === 'BUTTON') return // don't drag on buttons
+    if (e.target.tagName === 'BUTTON') return
     dragRef.current = {
       dragging: true,
       startX: e.clientX - pos.x,
@@ -58,6 +60,8 @@ function AgentPanel({ agent, color, activityLog, expanded, onToggleExpand, onDis
       window.removeEventListener('mouseup', onUp)
     }
   }, [])
+
+  const isCompleting = state === 'completing'
 
   return (
     <div style={{
@@ -89,13 +93,14 @@ function AgentPanel({ agent, color, activityLog, expanded, onToggleExpand, onDis
           <span style={{
             width: 7, height: 7, borderRadius: '50%', background: color,
             boxShadow: `0 0 8px ${color}`, flexShrink: 0,
-            animation: 'jpulse 1.5s ease-in-out infinite',
+            animation: isCompleting ? 'none' : 'jpulse 1.5s ease-in-out infinite',
+            opacity: isCompleting ? 0.5 : 1,
           }} />
           <span style={{
             fontSize: 9, fontFamily: "'JetBrains Mono', monospace", color,
             letterSpacing: '0.08em', fontWeight: 600, flex: 1,
           }}>
-            {agent.name.toUpperCase()}
+            {agent.name.toUpperCase()}{isCompleting ? ' · DONE' : ''}
           </span>
           <button
             onClick={onToggleExpand}
@@ -128,6 +133,18 @@ function AgentPanel({ agent, color, activityLog, expanded, onToggleExpand, onDis
               : agent.task}
           </div>
 
+          {/* Completion banner */}
+          {isCompleting && (
+            <div style={{
+              background: 'rgba(70,242,176,0.1)', border: '1px solid rgba(70,242,176,0.2)',
+              borderRadius: 6, padding: '6px 10px', marginBottom: 6,
+              fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+              color: 'var(--green)', letterSpacing: '0.03em',
+            }}>
+              ✓ Task complete — closing in {Math.ceil(agent.countdown / 1000)}s
+            </div>
+          )}
+
           {/* Activity log */}
           <div style={{
             maxHeight: expanded ? 250 : 80,
@@ -152,9 +169,14 @@ function AgentPanel({ agent, color, activityLog, expanded, onToggleExpand, onDis
                 </div>
               )
             })}
-            {activityLog.length === 0 && (
+            {activityLog.length === 0 && !isCompleting && (
               <div style={{ fontSize: 9, color: 'var(--text-faint)', fontStyle: 'italic' }}>
-                waiting for activity...
+                working...
+              </div>
+            )}
+            {activityLog.length === 0 && isCompleting && (
+              <div style={{ fontSize: 9, color: 'var(--text-dim)', fontStyle: 'italic' }}>
+                task finished
               </div>
             )}
           </div>
@@ -169,8 +191,9 @@ export function SubAgentOverlay({ agentStatus, toolStatus, orbState }) {
   const [expanded, setExpanded] = useState({})
   const [activityLogs, setActivityLogs] = useState({})
   const prevBusyRef = useRef({})
+  const dismissTimersRef = useRef({})
 
-  // Track busy agents — create panel when agent becomes busy, remove when ready
+  // Track busy agents — create panel when agent becomes busy, show completion then remove
   useEffect(() => {
     const current = agentStatus || {}
     const prev = prevBusyRef.current
@@ -181,21 +204,40 @@ export function SubAgentOverlay({ agentStatus, toolStatus, orbState }) {
         // Agent just became busy — create panel
         setPanels(p => ({
           ...p,
-          [name]: { name, task: status.task || 'Working...' },
+          [name]: { name, task: status.task || 'Working...', state: 'busy', countdown: DISMISS_DELAY },
         }))
         setActivityLogs(l => ({ ...l, [name]: [] }))
-        // Position panels in a cascade
         const count = Object.keys({ ...panels, [name]: true }).length
-        setExpanded(e => ({ ...e, [name]: count === 1 })) // auto-expand if only one
+        setExpanded(e => ({ ...e, [name]: count === 1 }))
       }
       if (status.state !== 'busy' && prev[name]?.state === 'busy') {
-        // Agent finished — schedule removal
+        // Agent finished — show completing state with countdown
+        setPanels(p => p[name] ? {
+          ...p,
+          [name]: { ...p[name], state: 'completing', countdown: DISMISS_DELAY },
+        } : p)
+
+        // Start countdown then dismiss
+        const startTime = Date.now()
+        const interval = setInterval(() => {
+          const elapsed = Date.now() - startTime
+          const remaining = Math.max(0, DISMISS_DELAY - elapsed)
+          setPanels(p => p[name] ? {
+            ...p,
+            [name]: { ...p[name], countdown: remaining },
+          } : p)
+          if (remaining <= 0) {
+            clearInterval(interval)
+          }
+        }, 200)
+
         const timer = setTimeout(() => {
+          clearInterval(interval)
           setPanels(p => { const n = { ...p }; delete n[name]; return n })
           setActivityLogs(l => { const n = { ...l }; delete n[name]; return n })
           setExpanded(e => { const n = { ...e }; delete n[name]; return n })
-        }, 2500)
-        return () => clearTimeout(timer)
+        }, DISMISS_DELAY)
+        dismissTimersRef.current[name] = { timer, interval }
       }
     }
     prevBusyRef.current = current
@@ -225,6 +267,13 @@ export function SubAgentOverlay({ agentStatus, toolStatus, orbState }) {
   }
 
   const dismissPanel = (name) => {
+    // Clear any pending dismiss timer
+    const timers = dismissTimersRef.current[name]
+    if (timers) {
+      clearTimeout(timers.timer)
+      clearInterval(timers.interval)
+      delete dismissTimersRef.current[name]
+    }
     setPanels(p => { const n = { ...p }; delete n[name]; return n })
     setActivityLogs(l => { const n = { ...l }; delete n[name]; return n })
     setExpanded(e => { const n = { ...e }; delete n[name]; return n })
@@ -248,6 +297,7 @@ export function SubAgentOverlay({ agentStatus, toolStatus, orbState }) {
             onToggleExpand={() => toggleExpand(name)}
             onDismiss={dismissPanel}
             defaultPos={{ x: 20 + i * 30, y: window.innerHeight - 380 - i * 40 }}
+            state={agent.state || 'busy'}
           />
         )
       })}

@@ -22,7 +22,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-_SESSIONS_DIR = Path(__file__).resolve().parent.parent / "dela_state" / "sessions"
+from dela import user_context
+
+
+def _sessions_dir() -> Path:
+    return user_context.resolve_state_dir("sessions")
 
 ACTIVE = "active"
 INTERRUPTED = "interrupted"
@@ -30,7 +34,7 @@ DONE = "done"
 
 
 def _session_path(session_id: str) -> Path:
-    return _SESSIONS_DIR / f"{session_id}.json"
+    return _sessions_dir() / f"{session_id}.json"
 
 
 def save_session(
@@ -40,7 +44,7 @@ def save_session(
     metadata: dict[str, Any] | None = None,
 ) -> None:
     """Save a session's history and status to disk."""
-    _SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
+    _sessions_dir().mkdir(parents=True, exist_ok=True)
     data = {
         "id": session_id,
         "status": status,
@@ -86,10 +90,10 @@ def mark_done(session_id: str) -> None:
 
 def list_sessions(status: str | None = None) -> list[dict[str, Any]]:
     """List all sessions, optionally filtered by status."""
-    if not _SESSIONS_DIR.exists():
+    if not _sessions_dir().exists():
         return []
     results = []
-    for path in _SESSIONS_DIR.glob("*.json"):
+    for path in _sessions_dir().glob("*.json"):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
             if status is None or data.get("status") == status:

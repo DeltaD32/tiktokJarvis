@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 import { THEMES, applyTheme, getCurrentTheme } from '../../themes'
 
 const ConnInput = ({ label, value, onChange, placeholder, type = 'text', secret = false }) => (
@@ -68,6 +69,7 @@ function ConnEditor({ form, setForm, onSave, onCancel }) {
 }
 
 export function SettingsPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [settings, setSettings]   = useState(null)
   const [loading, setLoading]     = useState(true)
   const [section, setSection]     = useState('general')
@@ -89,7 +91,7 @@ export function SettingsPanel({ onClose, message }) {
   const [connTest, setConnTest]       = useState(null)
 
   const refresh = () => {
-    fetch('/api/settings')
+    fetch('/api/settings', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { setSettings(data); setLoading(false) })
       .catch(() => setLoading(false))
@@ -98,10 +100,10 @@ export function SettingsPanel({ onClose, message }) {
   useEffect(() => { refresh() }, [])
   useEffect(() => {
     if (section === 'profile') {
-      fetch('/api/ollama/status').then(r => r.json()).then(d => setOllama(d)).catch(() => {})
+      fetch('/api/ollama/status', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).then(d => setOllama(d)).catch(() => {})
     }
     if (section === 'general' || section === 'router') {
-      fetch('/api/models').then(r => r.json()).then(d => setModelList(d)).catch(() => {})
+      fetch('/api/models', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).then(d => setModelList(d)).catch(() => {})
     }
     if (section === 'connections') {
       refreshConnections()
@@ -109,31 +111,31 @@ export function SettingsPanel({ onClose, message }) {
   }, [section])
 
   const refreshConnections = () => {
-    fetch('/api/connections').then(r => r.json()).then(d => setConnections(d)).catch(() => {})
-    fetch('/api/oauth/status').then(r => r.json()).then(d => setOauthStatus(d)).catch(() => {})
+    fetch('/api/connections', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).then(d => setConnections(d)).catch(() => {})
+    fetch('/api/oauth/status', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).then(d => setOauthStatus(d)).catch(() => {})
   }
 
   const setLiveModel = (model) => {
     fetch('/api/settings/live', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: 'model', value: model }),
     }).then(() => {
       setSaveMsg(`Model set to ${model}. Takes effect on next call.`)
       setTimeout(() => setSaveMsg(''), 3000)
       refresh()
-      fetch('/api/models').then(r => r.json()).then(d => setModelList(d)).catch(() => {})
+      fetch('/api/models', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).then(d => setModelList(d)).catch(() => {})
     })
   }
 
   const resetLiveModel = () => {
-    fetch('/api/settings/live/model', { method: 'DELETE' })
+    fetch('/api/settings/live/model', { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(() => {
         setSaveMsg('Model reset to connection default. Takes effect on next call.')
         setTimeout(() => setSaveMsg(''), 3000)
         refresh()
-        fetch('/api/models').then(r => r.json()).then(d => setModelList(d)).catch(() => {})
+        fetch('/api/models', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()).then(d => setModelList(d)).catch(() => {})
       })
   }
 
@@ -145,7 +147,7 @@ export function SettingsPanel({ onClose, message }) {
   const switchProfile = (name) => {
     fetch('/api/settings/profile', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ profile: name }),
     })
       .then(r => r.json())
@@ -162,7 +164,7 @@ export function SettingsPanel({ onClose, message }) {
   const updateHeartbeat = (key, value) => {
     fetch('/api/settings/heartbeat', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ [key]: value }),
     }).then(() => refresh())
   }
@@ -174,7 +176,7 @@ export function SettingsPanel({ onClose, message }) {
     }
     fetch('/api/settings/env', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ key: envKey, value: envValue }),
     })
       .then(r => r.json())
@@ -191,7 +193,7 @@ export function SettingsPanel({ onClose, message }) {
   const updateLive = (key, value) => {
     fetch('/api/settings/live', {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, value }),
     })
       .then(r => r.json())
@@ -201,7 +203,7 @@ export function SettingsPanel({ onClose, message }) {
   }
 
   const resetLive = (key) => {
-    fetch(`/api/settings/live/${key}`, { method: 'DELETE' })
+    fetch(`/api/settings/live/${key}`, { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => { if (data.ok) refresh() })
   }
@@ -533,7 +535,7 @@ export function SettingsPanel({ onClose, message }) {
                   onChange={e => {
                     fetch('/api/connections/assign', {
                       method: 'PUT',
-                      headers: { 'Content-Type': 'application/json' },
+                      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
                       body: JSON.stringify({ profile: p.name, connection: e.target.value }),
                     }).then(() => {
                       refreshConnections(); refresh()
@@ -581,7 +583,7 @@ export function SettingsPanel({ onClose, message }) {
                   <div style={{ display: 'flex', gap: 4 }}>
                     {c.auth_type === 'oauth' && (
                       <button className="icon-btn" style={{ fontSize: 9 }} onClick={() => {
-                        fetch('/api/oauth/refresh', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c.name }) })
+                        fetch('/api/oauth/refresh', { method: 'POST', headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' }, body: JSON.stringify({ name: c.name }) })
                           .then(r => r.json()).then(d => {
                             if (d.ok) setConnMsg(`Token refreshed — ${c.name}`)
                             else setConnMsg(`Refresh failed: ${d.error}`)
@@ -592,7 +594,7 @@ export function SettingsPanel({ onClose, message }) {
                     )}
                     <button className="icon-btn" style={{ fontSize: 9 }} onClick={() => {
                       setConnTest(null)
-                      fetch(`/api/connections/${encodeURIComponent(c.name)}/test`, { method: 'POST' })
+                      fetch(`/api/connections/${encodeURIComponent(c.name)}/test`, { method: 'POST', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
                         .then(r => r.json()).then(d => setConnTest({ name: c.name, ...d }))
                     }}>test</button>
                     <button className="icon-btn" style={{ fontSize: 9 }} onClick={() => {
@@ -601,7 +603,7 @@ export function SettingsPanel({ onClose, message }) {
                     }}>{isEditing ? 'close' : 'edit'}</button>
                     <button className="icon-btn" style={{ fontSize: 9, color: 'var(--red)', borderColor: 'var(--red)' }} onClick={() => {
                       if (confirm(`Delete connection "${c.name}"?`)) {
-                        fetch(`/api/connections/${encodeURIComponent(c.name)}`, { method: 'DELETE' })
+                        fetch(`/api/connections/${encodeURIComponent(c.name)}`, { method: 'DELETE', headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
                           .then(() => { refreshConnections(); refresh() })
                       }
                     }}>delete</button>
@@ -628,7 +630,7 @@ export function SettingsPanel({ onClose, message }) {
                   <ConnEditor
                     form={connForm} setForm={setConnForm}
                     onSave={() => {
-                      fetch('/api/connections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(connForm) })
+                      fetch('/api/connections', { method: 'POST', headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' }, body: JSON.stringify(connForm) })
                         .then(r => r.json()).then(d => {
                           if (d.ok) { setEditingConn(null); setConnForm({}); setConnMsg(`Saved connection: ${connForm.name}`); setTimeout(() => setConnMsg(''), 3000); refreshConnections(); refresh() }
                           else setConnMsg(d.error || 'Save failed')
@@ -653,7 +655,7 @@ export function SettingsPanel({ onClose, message }) {
               <ConnEditor
                 form={connForm} setForm={setConnForm}
                 onSave={() => {
-                  fetch('/api/connections', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(connForm) })
+                  fetch('/api/connections', { method: 'POST', headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' }, body: JSON.stringify(connForm) })
                     .then(r => r.json()).then(d => {
                       if (d.ok) { setEditingConn(null); setConnForm({}); setConnMsg(`Created connection: ${connForm.name}`); setTimeout(() => setConnMsg(''), 3000); refreshConnections(); refresh() }
                       else setConnMsg(d.error || 'Create failed')

@@ -27,7 +27,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-_LOG = Path(__file__).resolve().parent.parent / "dela_state" / "status_events.jsonl"
+from dela import user_context
+
+
+def _log_path() -> Path:
+    return user_context.resolve_state_path("status_events.jsonl")
 
 
 def log(
@@ -50,8 +54,8 @@ def log(
         "metadata": metadata or {},
     }
 
-    _LOG.parent.mkdir(parents=True, exist_ok=True)
-    with open(_LOG, "a", encoding="utf-8") as f:
+    _log_path().parent.mkdir(parents=True, exist_ok=True)
+    with open(_log_path(), "a", encoding="utf-8") as f:
         f.write(json.dumps(event, ensure_ascii=False) + "\n")
 
     return event
@@ -59,9 +63,9 @@ def log(
 
 def tail(n: int = 20) -> list[dict[str, Any]]:
     """Return the last N events."""
-    if not _LOG.exists():
+    if not _log_path().exists():
         return []
-    lines = _LOG.read_text(encoding="utf-8").splitlines()
+    lines = _log_path().read_text(encoding="utf-8").splitlines()
     events = []
     for line in lines[-n:]:
         try:
@@ -73,10 +77,10 @@ def tail(n: int = 20) -> list[dict[str, Any]]:
 
 def for_entity(entity_id: str, limit: int = 50) -> list[dict[str, Any]]:
     """Get all events for a specific entity (project, blackboard, etc.)."""
-    if not _LOG.exists():
+    if not _log_path().exists():
         return []
     events = []
-    for line in _LOG.read_text(encoding="utf-8").splitlines():
+    for line in _log_path().read_text(encoding="utf-8").splitlines():
         try:
             event = json.loads(line)
             if event.get("entity_id") == entity_id:

@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 const STATUS_COLORS = {
   open: 'var(--amber)', 'in_progress': 'var(--accent)', closed: 'var(--green)',
 }
 
 function ProjectDetail({ project, onBack }) {
+  const { token } = useAuth()
   const [auditResult, setAuditResult] = useState(null)
   const [auditing, setAuditing] = useState(false)
 
@@ -13,7 +15,7 @@ function ProjectDetail({ project, onBack }) {
     setAuditing(true)
     fetch('/api/audit/workflow', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({ name: project.name || 'Untitled', description: project.description || '', steps: project.steps || [] }),
     })
       .then(r => r.json())
@@ -114,6 +116,7 @@ function ProjectDetail({ project, onBack }) {
 }
 
 export function ProjectsPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [projects, setProjects] = useState([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState('')
@@ -124,7 +127,7 @@ export function ProjectsPanel({ onClose, message }) {
   const fetchProjects = useCallback(() => {
     setLoading(true)
     // Try projects endpoint, fall back to tasks
-    fetch('/api/state/projects')
+    fetch('/api/state/projects', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
       .then(r => r.json())
       .then(data => {
         const items = data?.items || data || []
@@ -133,7 +136,7 @@ export function ProjectsPanel({ onClose, message }) {
       })
       .catch(() => {
         // Fallback: fetch tasks and group
-        fetch('/api/tasks')
+        fetch('/api/tasks', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} })
           .then(r => r.json())
           .then(tasks => {
             // Mock projects from tasks for now

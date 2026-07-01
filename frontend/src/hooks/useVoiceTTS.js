@@ -80,27 +80,31 @@ function _releaseSpeaker() {
   try { _speakerChannel?.postMessage('stopped') } catch (_) {}
 }
 
-export function useVoiceTTS() {
+export function useVoiceTTS(token) {
   const [speaking, setSpeaking] = useState(false)
   const queueRef = useRef([])
   const playingRef = useRef(false)
   const cancelledRef = useRef(false)
   const sourceNodeRef = useRef(null)
   const prefetchBufferRef = useRef(null)  // pre-fetched audio for next sentence
+  const tokenRef = useRef(token)
+  tokenRef.current = token
 
   // Fetch TTS audio and return decoded AudioBuffer (or null)
   const fetchAudio = useCallback(async (text) => {
     try {
+      const headers = { 'Content-Type': 'application/json' }
+      if (tokenRef.current) headers['Authorization'] = `Bearer ${tokenRef.current}`
       const resp = await fetch('/api/voice/tts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({ text }),
       })
       if (!resp.ok) return null
       const arrayBuffer = await resp.arrayBuffer()
       if (cancelledRef.current) return null
       _ensureAudio()
-      if (_audioCtx.state === 'suspended') _audioCtx.resume()
+      if (_audioCtx.state === 'suspended') await _audioCtx.resume()
       return await _audioCtx.decodeAudioData(arrayBuffer)
     } catch {
       return null

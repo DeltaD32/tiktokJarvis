@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { HoloPanel } from '../HoloPanel'
+import { useAuth } from '../../contexts/AuthContext'
 
 function ToolAuditor({ tool, onClose }) {
+  const { token } = useAuth()
   const [testArgs, setTestArgs] = useState('{}')
   const [result, setResult] = useState(null)
   const [running, setRunning] = useState(false)
@@ -11,7 +13,7 @@ function ToolAuditor({ tool, onClose }) {
     setResult(null)
     fetch('/api/audit/tool', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { ...(token ? { 'Authorization': `Bearer ${token}` } : {}), 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: tool.name,
         description: tool.description || '',
@@ -137,6 +139,7 @@ function ToolAuditor({ tool, onClose }) {
 }
 
 export function ToolBrowserPanel({ onClose, message }) {
+  const { token } = useAuth()
   const [tools, setTools]           = useState([])
   const [agents, setAgents]         = useState([])
   const [loading, setLoading]       = useState(true)
@@ -150,8 +153,8 @@ export function ToolBrowserPanel({ onClose, message }) {
 
   useEffect(() => {
     Promise.all([
-      fetch('/api/tools').then(r => r.json()),
-      fetch('/api/agents').then(r => r.json()),
+      fetch('/api/tools', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()),
+      fetch('/api/agents', { headers: token ? { 'Authorization': `Bearer ${token}` } : {} }).then(r => r.json()),
     ])
       .then(([t, a]) => { setTools(t); setAgents(a); setLoading(false) })
       .catch(() => setLoading(false))
