@@ -82,7 +82,13 @@ _clients: dict[str | None, WebSocket] = {}
 _histories: dict[str | None, list[dict]] = {}
 _confirm_callbacks: dict[str | None, dict[str, threading.Event]] = {}
 _confirm_results: dict[str | None, dict[str, bool]] = {}
-_brain_lock = threading.Lock()
+_brain_locks: dict[str | None, threading.Lock] = {}
+import threading as _threading
+def _get_brain_lock(user_id: str | None = None) -> threading.Lock:
+    """Return a per-user brain lock so multiple users can think simultaneously."""
+    if user_id not in _brain_locks:
+        _brain_locks[user_id] = _threading.Lock()
+    return _brain_locks[user_id]
 _oauth_refresh_times: dict[str, float] = {}
 _login_attempts: dict[str, list[float]] = {}
 
@@ -1472,7 +1478,7 @@ async def ws_endpoint(ws: WebSocket) -> None:
 
 
 async def _handle_message(user_text: str, *, user_id: str | None = None) -> None:
-    if not _brain_lock.acquire(blocking=False):
+    if not _get_brain_lock(user_id).acquire(blocking=False):
         await _broadcast_to_user(user_id, {"type": "token", "content": "[Dela is still thinking — please wait]", "tool_blip": False})
         return
 
@@ -1495,14 +1501,14 @@ async def _handle_message(user_text: str, *, user_id: str | None = None) -> None
         finally:
             asyncio.run_coroutine_threadsafe(queue.put(None), loop)
             try:
-                _brain_lock.release()
+                _get_brain_lock(user_id).release()
             except RuntimeError:
                 pass  # lock already released by watchdog
 
     def _watchdog() -> None:
         time.sleep(turn_timeout)
         try:
-            _brain_lock.release()
+            _get_brain_lock(user_id).release()
         except RuntimeError:
             pass  # already released normally
 

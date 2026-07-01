@@ -284,3 +284,55 @@ entries.
 
 Each step ends with something runnable and a verification test. Don't start
 a step until the previous one works on its own.
+
+---
+
+## Perfection Roadmap (post-baseline polish)
+
+These items are ordered by impact × effort — smallest fixes first (snowball method).
+
+### Tier 1 — Snowball (quick wins, under 30 min each)
+
+| # | Item | Effort | Impact | Status |
+|---|---|---|---|---|
+| 1 | **Exponential WS backoff** — 1s → 3s → 10s → 30s instead of fixed 3.5s reconnect | 5 min | Reduces log noise | ✅ done |
+| 2 | **Conversation persistence** — save/restore to localStorage, survives page reload | 10 min | UX: history survives refresh | ✅ done |
+| 3 | **Per-user brain lock** — `_brain_locks[user_id]` instead of global lock, multi-user simultaneous chat | 5 min | Unblocks multi-user concurrency | ✅ done |
+| 4 | **Sub-agent JSON output** — structured `{section, data}` format from agents instead of free text | 15 min | Enables reliable HTML synthesis |
+| 5 | **WebSocket reconnect state** — show "Reconnecting in Xs..." in top strip during backoff | 10 min | Visual feedback on connection loss |
+| 6 | **Error boundary** — React `<ErrorBoundary>` wrapping app, catches render crashes | 10 min | Graceful crash recovery |
+
+### Tier 2 — Solidify (foundational quality)
+
+| # | Item | Effort | Impact | Status |
+|---|---|---|---|---|
+| 7 | **Feature registry** — `dela_state/features.json`, lifecycle states (evaluated → shelved → in_progress → done), prevents double-research | 1h | Foundation for feature management |
+| 8 | **Token refresh UI** — auto-refresh token before expiry, "Session expiring" warning | 30 min | Seamless auth experience |
+| 9 | **Sub-agent result streaming** — stream sub-agent output tokens into panel overlay in real-time | 1h | Rich visibility into agent work |
+| 10 | **Voice selection UI** — dropdown for kokoro/piper voices, TTS provider toggle | 30 min | Voice customization |
+| 11 | **Audit search/filter** — `GET /api/audit?q=keyword&type=tool&since=...` | 45 min | Debuggability |
+| 12 | **Heartbeat per-user** — each user can configure their own heartbeat checks | 1h | Personalization |
+
+### Tier 3 — Expand (new capabilities)
+
+| # | Item | Effort | Impact | Status |
+|---|---|---|---|---|
+| 13 | **Acceptance wizard** — Accept → questionnaire → implementation plan → progress tracking | 2h | Completes feature pipeline |
+| 14 | **Feature idea Gantt** — timeline view of all evaluated/in-progress features | 1.5h | Strategic overview |
+| 15 | **Mobile responsive layout** — breakpoints for tablet/phone, collapsible panels | 3h | Ubiquity |
+| 16 | **Multi-provider fallback** — primary → secondary provider on failure | 1h | Resilience |
+| 17 | **Sandbox runtime expansion** — add Node.js/FFmpeg to Docker sandbox for video/media tools | 2h | Unblocks Remotion-class tools |
+| 18 | **User-custom themes** — per-user theme via settings panel, stored per-user | 45 min | Personalization |
+
+### Tier 4 — Polish (delight)
+
+| # | Item | Effort | Impact | Status |
+|---|---|---|---|---|
+| 19 | **Benchmark dashboard** — cost per feature, token trends, model routing stats | 2h | Operational visibility |
+| 20 | **Pipeline resume** — interrupted evaluations recover from last stage after restart | 2h | Reliability |
+| 21 | **Collaborative workflow** — two users on same project via shared blackboard | 3h | Team capability |
+| 22 | **Plugin system** — third-party tool/agent/skill packages via a manifest | 4h | Ecosystem |
+
+---
+
+See `docs/feature-pipeline.md` for the full feature evaluation architecture.

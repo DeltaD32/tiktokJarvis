@@ -6,6 +6,7 @@ export function useDelaWS(token) {
   const wsRef = useRef(null)
   const reconnectTimer = useRef(null)
   const connIdRef = useRef(0)  // incremented on each connect; used to discard stale onclose
+  const retryCountRef = useRef(0)  // exponential backoff: 1s → 3s → 10s → 30s
 
   const [connected, setConnected]         = useState(false)
   const [orbState, setOrbState]           = useState('idle')
@@ -45,7 +46,10 @@ export function useDelaWS(token) {
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
-    ws.onopen = () => setConnected(true)
+    ws.onopen = () => {
+      setConnected(true)
+      retryCountRef.current = 0  // reset backoff on successful connect
+    }
 
     ws.onmessage = (ev) => {
       if (connIdRef.current !== connId) return  // stale connection
@@ -60,6 +64,11 @@ export function useDelaWS(token) {
           if (data.cost) setCost(data.cost)
           _processingTurn.current = false
           streamBuffer.current = ''
+          // Restore persisted conversation
+          try {
+            const saved = localStorage.getItem('dela_conversation')
+            if (saved) setConversation(JSON.parse(saved))
+          } catch {}
           break
 
         case 'state_change':
@@ -178,7 +187,10 @@ export function useDelaWS(token) {
         idleTimer.current = null
       }
       if (connIdRef.current === connId) {
-        reconnectTimer.current = setTimeout(connect, 3500)
+        const delays = [1000, 3000, 10000, 30000]
+        const delay = delays[Math.min(retryCountRef.current, delays.length - 1)]
+        retryCountRef.current += 1
+        reconnectTimer.current = setTimeout(connect, delay)
       }
     }
 
@@ -230,6 +242,13 @@ export function useDelaWS(token) {
     if (approved) setOrbState('thinking')
     else setOrbState('idle')
   }, [send])
+
+  // Persist conversation to localStorage on every change
+  useEffect(() => {
+    if (conversation.length > 0) {
+      try { localStorage.setItem('dela_conversation', JSON.stringify(conversation.slice(-50))) } catch {}
+    }
+  }, [conversation])
 
   const closePanel = useCallback(() => {
     setActivePanel(null)

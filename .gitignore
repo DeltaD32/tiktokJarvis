@@ -38,3 +38,4 @@ frontend/dist/
 # Stray files
 *.zip
 Bruce'sResearchRequests.md.txt
+.playwright-mcp/
